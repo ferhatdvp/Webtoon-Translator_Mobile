@@ -128,6 +128,11 @@ class MainActivity : Activity() {
             }
         }
         web.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
+                if (Store.isAdBlockEnabled() && AdBlocker.shouldBlock(request)) return AdBlocker.emptyResponse()
+                return super.shouldInterceptRequest(view, request)
+            }
+
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
                 pageProxy = null
                 if (!urlBar.hasFocus() && url.startsWith("http")) urlBar.setText(url)
