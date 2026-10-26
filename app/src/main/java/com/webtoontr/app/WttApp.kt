@@ -9,6 +9,7 @@ class WttApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Store.init(this)
+        AdBlocker.initialize(this)
         Http.userAgent = WebSettings.getDefaultUserAgent(this)
         registerActivityLifecycleCallbacks(
             object : ActivityLifecycleCallbacks {
