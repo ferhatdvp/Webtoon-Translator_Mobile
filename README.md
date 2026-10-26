@@ -4,23 +4,18 @@ Telefonda çalışan mini tarayıcı. Listeye eklediğin webtoon sitelerinde gö
 Gemini (ücretsiz katman) ile Türkçeye çevirip yazının üstüne yerleştirir. Chrome eklentisiyle **aynı JS kodunu** kullanır
 (çeviri hattı, önbellek, kota koruması, kutu yerleştirme); Android'e özgü kısım yalnızca ince bir Kotlin kabuğudur.
 
-> **Durum: prototip. Kotlin kodu henüz derlenmedi ve bir telefonda denenmedi** (geliştirme ortamında Android SDK yoktu).
+> **Durum:** Android debug APK'sı başarıyla derlendi; gerçek telefonda henüz denenmedi.
 > JS tarafı, Kotlin köprüsünü Node ile taklit eden bir testte Chromium'da doğrulandı. Ayrıntı en altta.
 
-## APK nasıl alınır (iki yol)
+## APK'yı indirip telefona kur
 
-### A) Android Studio (bilgisayarında)
-1. <https://developer.android.com/studio> adresinden Android Studio'yu kur.
-2. **Open** → bu klasörü (`webtoon-translator-android`) seç. İlk açılışta Gradle ve Android SDK'yı kendisi indirir (birkaç GB, 10–20 dk).
-3. Menü: **Build → Build Bundle(s) / APK(s) → Build APK(s)**. Bitince "locate" bağlantısı `app-debug.apk` dosyasını gösterir.
-4. APK'yı telefona at (kablo, Drive, e-posta). Telefonda dosyaya dokun → "Bilinmeyen kaynaklardan yükle"ye bir kez izin ver → yükle.
-   Alternatif: telefonda USB hata ayıklamayı aç, kabloyla bağla, Studio'da ▶ Run.
+1. Android telefonundan [`webtoon-cevirmen-debug.apk` dosyasını indir](https://github.com/ferhatdvp/Webtoon-Translator/raw/refs/heads/main/downloads/webtoon-cevirmen-debug.apk).
+2. İndirilenler klasöründe APK'ya dokun ve **Yükle**'yi seç. Telefon izin isterse, indirme yaptığın uygulama için **Bilinmeyen uygulamaları yükle** iznini açıp kuruluma dön.
+3. Uygulamayı aç ve aşağıdaki **İlk kullanım** adımlarını tamamla.
 
-### B) GitHub Actions (bilgisayara Android Studio kurmadan)
-Klasörü kendi GitHub hesabında **özel (private) bir depoya** yükle → **Actions → Build APK → Run workflow** → bitince "Artifacts"
-altından `webtoon-cevirmen-debug-apk` iner. (Bu adımı senin yerine yapmadım; hesabına dokunmadım.)
+> **Erişim notu:** GitHub deposu private. Bu bağlantı yalnızca depoya erişimi olan kişilerde çalışır.
 
-Derleme hata verirse hata metnini bana yapıştır; Kotlin'i hiç derleyemediğim için ilk derlemede küçük bir düzeltme gerekebilir.
+Bilgisayarda kendin derlemek istersen Android Studio'da **Build → Build Bundle(s) / APK(s) → Build APK(s)** seç; çıktı `app/build/outputs/apk/debug/app-debug.apk` konumunda olur. GitHub Actions da `main` dalına her güncellemede APK'yı yeniden derleyip bu depoya koyar.
 
 ## İlk kullanım
 1. Uygulamayı aç → ⋮ → **Ayarlar**: Gemini API anahtarını gir (<https://aistudio.google.com/apikey>), "ücretsiz katman" onayını işaretle, **Bağlantıyı test et**, **Kaydet**.
