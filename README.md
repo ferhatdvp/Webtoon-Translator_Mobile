@@ -13,8 +13,6 @@ Gemini (ücretsiz katman) ile Türkçeye çevirip yazının üstüne yerleştiri
 2. İndirilenler klasöründe APK'ya dokun ve **Yükle**'yi seç. Telefon izin isterse, indirme yaptığın uygulama için **Bilinmeyen uygulamaları yükle** iznini açıp kuruluma dön.
 3. Uygulamayı aç ve aşağıdaki **İlk kullanım** adımlarını tamamla.
 
-> **Erişim notu:** GitHub deposu private. Bu bağlantı yalnızca depoya erişimi olan kişilerde çalışır.
-
 Bilgisayarda kendin derlemek istersen Android Studio'da **Build → Build Bundle(s) / APK(s) → Build APK(s)** seç; çıktı `app/build/outputs/apk/debug/app-debug.apk` konumunda olur. GitHub Actions da `main` dalına her güncellemede APK'yı yeniden derleyip bu depoya koyar.
 
 ## İlk kullanım
