@@ -9,7 +9,7 @@ Gemini (ücretsiz katman) ile Türkçeye çevirip yazının üstüne yerleştiri
 
 ## APK'yı indirip telefona kur
 
-1. Android telefonundan [`webtoon-cevirmen-debug.apk` dosyasını indir](https://github.com/ferhatdvp/Webtoon-Translator/raw/refs/heads/main/downloads/webtoon-cevirmen-debug.apk).
+1. Android telefonundan [`webtoon-cevirmen-debug.apk` dosyasını indir](https://github.com/ferhatdvp/Webtoon-Translator_Mobile/raw/refs/heads/main/downloads/webtoon-cevirmen-debug.apk).
 2. İndirilenler klasöründe APK'ya dokun ve **Yükle**'yi seç. Telefon izin isterse, indirme yaptığın uygulama için **Bilinmeyen uygulamaları yükle** iznini açıp kuruluma dön.
 3. Uygulamayı aç ve aşağıdaki **İlk kullanım** adımlarını tamamla.
 
