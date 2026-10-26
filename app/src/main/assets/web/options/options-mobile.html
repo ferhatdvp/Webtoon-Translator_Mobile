@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <script src="../mobile/chrome-shim.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Webtoon Çevirmen — Ayarlar</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <main>
+    <h1>Webtoon Çevirmen <span class="tag">Ayarlar</span></h1>
+
+    <!-- 1) SİTELER -->
+    <section class="card">
+      <h2>1 · İzin verilen siteler</h2>
+      <p class="hint">Eklenti yalnızca burada listelenen ve etkin olan sitelerde çalışır. Listede olmayan sitelerde hiçbir kod çalıştırılmaz.</p>
+      <div class="row">
+        <input id="newSite" type="text" placeholder="örn. webtoons.com veya sayfanın adresi" />
+        <button id="addSite" class="primary">Ekle</button>
+      </div>
+      <div id="siteMsg" class="msg"></div>
+      <table id="siteTable"><tbody></tbody></table>
+    </section>
+
+    <!-- 2) SAĞLAYICI -->
+    <section class="card">
+      <h2>2 · Çeviri sağlayıcısı</h2>
+      <div class="radios">
+        <label><input type="radio" name="provider" value="gemini" /> <b>Gemini (Google AI Studio)</b> — ücretsiz katman, hızlı, en iyi sonuç</label>
+        <label><input type="radio" name="provider" value="ollama" /> <b>Ollama (yerel)</b> — tamamen ücretsiz ve kotasız, kendi bilgisayarında çalışır</label>
+      </div>
+
+      <div id="geminiBox" class="sub">
+        <label>API anahtarı
+          <input id="apiKey" type="password" autocomplete="off" placeholder="AIza…" />
+        </label>
+        <p class="hint">Anahtarı <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">aistudio.google.com/apikey</a> adresinden ücretsiz alın. Yalnızca bu tarayıcıda saklanır, sayfalara gösterilmez.</p>
+        <div class="grid2">
+          <label>Model
+            <input id="gModel" list="gModels" />
+          </label>
+          <label>Yedek model (kota dolunca; ücretsiz katmanda ayrı kota)
+            <input id="gFallback" list="gModels" placeholder="boş = kapalı" />
+          </label>
+        </div>
+        <datalist id="gModels">
+          <option value="gemini-3.6-flash"></option>
+          <option value="gemini-3.8-flash"></option>
+          <option value="gemini-3.5-flash-lite"></option>
+          <option value="gemini-3.1-flash-lite"></option>
+        </datalist>
+        <label class="check consent">
+          <input id="confirmedFree" type="checkbox" />
+          <span><b>Bu anahtarın ücretsiz katmanda olduğunu onaylıyorum</b> (Google Cloud projesinde faturalandırma <u>kapalı</u>). İşaretlenmezse Gemini’ye istek gönderilmez.</span>
+        </label>
+      </div>
+
+      <div id="ollamaBox" class="sub">
+        <div class="grid2">
+          <label>Ollama adresi
+            <input id="oEndpoint" />
+          </label>
+          <label>Görüntü destekli model
+            <input id="oModel" list="oModels" />
+          </label>
+        </div>
+        <datalist id="oModels">
+          <option value="qwen3-vl:8b"></option>
+          <option value="qwen3-vl:4b"></option>
+          <option value="qwen2.5vl:7b"></option>
+        </datalist>
+        <label>Koordinat biçimi
+          <select id="oCoord">
+            <option value="relative1000">Göreli 0–1000 (qwen3-vl)</option>
+            <option value="absolute">Mutlak piksel (qwen2.5-vl)</option>
+          </select>
+        </label>
+        <p class="hint">Kurulum: <code>ollama pull qwen3-vl:8b</code>. Kutu konumları yerel modellerde Gemini kadar isabetli olmayabilir.</p>
+      </div>
+
+      <div class="row">
+        <button id="testProvider">Bağlantıyı test et</button>
+        <span id="testMsg" class="msg"></span>
+      </div>
+    </section>
+
+    <!-- 3) LİMİTLER -->
+    <section class="card">
+      <h2>3 · Kota ve ücret koruması</h2>
+      <div class="grid2">
+        <label>Günlük istek sınırı (model başına)
+          <input id="dailyCap" type="number" min="1" max="100000" />
+        </label>
+        <label>İstekler arası asgari süre (ms)
+          <input id="minInterval" type="number" min="0" max="60000" step="500" />
+        </label>
+      </div>
+      <p class="hint">Her görsel parçası 1 istektir. Sınıra ulaşılınca eklenti durur ve sizi bilgilendirir; <b>ücretli kullanıma kendiliğinden geçmez</b>. Gün, Google kotasıyla aynı şekilde Pasifik saatine göre sıfırlanır.</p>
+      <label class="check consent danger">
+        <input id="allowPaid" type="checkbox" />
+        <span>Ücretli kullanıma izin ver (yerel günlük sınırı kaldırır). <b>Önerilmez.</b></span>
+      </label>
+      <div class="row">
+        <button id="resetBlocks">Bugünkü “kota doldu” işaretini sıfırla</button>
+        <span id="usageInfo" class="msg"></span>
+      </div>
+    </section>
+
+    <!-- 4) GÖRÜNÜM -->
+    <section class="card">
+      <h2>4 · Görsel algılama ve görünüm</h2>
+      <div class="grid3">
+        <label>Min. görsel genişliği (px)
+          <input id="minW" type="number" min="50" max="4000" />
+        </label>
+        <label>Min. görsel yüksekliği (px)
+          <input id="minH" type="number" min="50" max="4000" />
+        </label>
+        <label>Kutu genişletme (%)
+          <input id="expand" type="number" min="0" max="40" step="1" />
+        </label>
+      </div>
+      <label>Çeviri sırası
+        <select id="prefetch">
+          <option value="all">Önden çevir: sayfadaki tüm görselleri sırayla (hiç boşta kalmaz, önerilen)</option>
+          <option value="near">Yalnızca ekrana yakın görselleri (kota tasarrufu)</option>
+        </select>
+      </label>
+      <label class="check"><input id="showSfx" type="checkbox" /> Ses efektlerini (SFX) ve çizimin içindeki yazıları (el yazısı, tabela vb.) da çevir ve göster</label>
+    </section>
+
+    <!-- 5) SÖZLÜK -->
+    <section class="card">
+      <h2>5 · Sözlük (isim / terim tutarlılığı)</h2>
+      <p class="hint">Satır başına bir tane: <code>English = Türkçe</code>. Karakter adlarını sabitlemek için kullanışlıdır.</p>
+      <textarea id="glossary" rows="6" placeholder="Hunter = Avcı&#10;Gate = Kapı&#10;Sung Jin-Woo = Sung Jin-Woo"></textarea>
+    </section>
+
+    <!-- 6) ÖNBELLEK -->
+    <section class="card">
+      <h2>6 · Önbellek</h2>
+      <div class="row">
+        <span id="cacheInfo" class="msg">—</span>
+        <button id="clearCache" class="danger">Önbelleği temizle</button>
+      </div>
+    </section>
+
+    <!-- 7) TANILAMA -->
+    <section class="card">
+      <h2>7 · Tanılama (son istekler)</h2>
+      <p class="hint">Çeviri gelmiyor ya da yavaşsa buraya bakın. Görsel içeriği ve API anahtarı kaydedilmez. Kendi limitlerinizi <a href="https://aistudio.google.com/rate-limit" target="_blank" rel="noreferrer">AI Studio → Rate limit</a> sayfasında görebilirsiniz.</p>
+      <div id="pacingInfo" class="msg"></div>
+      <div class="row">
+        <button id="logRefresh">Yenile</button>
+        <button id="logCopy">Kopyala</button>
+        <button id="logClear" class="danger">Temizle</button>
+      </div>
+      <table id="logTable"><tbody></tbody></table>
+    </section>
+
+    <!-- 8) MOBİL (yalnızca Android uygulamasında görünür) -->
+    <section class="card" id="mobileCard" hidden>
+      <h2>8 · Telefon (pil ve veri)</h2>
+      <label class="check"><input id="wifiOnly" type="checkbox" /> Yalnızca Wi-Fi'de çevir (mobil veride istek gönderme)</label>
+      <label>Pil bu yüzdenin altındaysa (şarjda değilse) beklet (0 = kapalı)
+        <input id="minBattery" type="number" min="0" max="90" />
+      </label>
+      <p class="hint">Uygulama arka plana alınınca ya da ekran kapanınca çeviri kendiliğinden durur. Pil tasarrufu modu açıksa önden çeviri “yalnızca ekrana yakın görseller” moduna düşer.</p>
+    </section>
+
+    <div class="savebar">
+      <button id="save" class="primary big">Kaydet</button>
+      <span id="saveMsg" class="msg"></span>
+    </div>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

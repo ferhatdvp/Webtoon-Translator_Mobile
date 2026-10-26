@@ -1,0 +1,105 @@
+/* content/content.css — görsellerin üstüne binen çeviri kutularının stilleri.
+   Sayfanın kendi CSS'inden etkilenmemek için kritik özelliklerde !important kullanılır.
+   Eklenti arayüzü (düğme, bildirim, ipucu) ayrı bir Shadow DOM içindedir; stili content.js içindedir. */
+
+#wtt-layer {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: visible !important;
+  z-index: 1 !important;
+  pointer-events: none !important;
+}
+
+html[data-wtt-hidden] #wtt-layer {
+  display: none !important;
+}
+
+.wtt-overlay {
+  position: absolute !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  pointer-events: none !important;
+  contain: layout style;
+}
+
+.wtt-box {
+  position: absolute !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  pointer-events: auto !important;
+  cursor: help !important;
+  border-radius: 0.45em !important;
+  text-align: center !important;
+  font-family: "Comic Neue", "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif !important;
+  font-weight: 700 !important;
+  line-height: 1.12 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  hyphens: manual !important;
+  user-select: text;
+}
+
+.wtt-box.wtt-break {
+  overflow-wrap: anywhere !important;
+}
+
+.wtt-txt {
+  display: block !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0.08em 0.22em !important;
+  box-sizing: border-box !important;
+}
+
+/* Konuşma/düşünce balonlarında köşeler daha yuvarlak: balon dışına taşan köşe yaması azalır */
+.wtt-box.wtt-speech,
+.wtt-box.wtt-thought {
+  border-radius: 0.9em !important;
+}
+
+/* Anlatı kutuları biraz daha kare köşeli görünür */
+.wtt-box.wtt-narration {
+  border-radius: 0.2em !important;
+}
+
+/* Yazı ses efekti: arka plan doldurma yok, yalnızca metin */
+.wtt-box.wtt-sfx {
+  background: transparent !important;
+}
+
+/* Durum rozeti: çevrilmekte olan görselin üst kenarında, ortada */
+.wtt-badge {
+  position: absolute !important;
+  display: none;
+  transform: translateX(-50%) !important;
+  padding: 6px 14px !important;
+  border-radius: 999px !important;
+  font: 600 13px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif !important;
+  color: #fff !important;
+  background: rgba(43, 108, 255, 0.92) !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) !important;
+  pointer-events: none !important;
+  white-space: nowrap !important;
+}
+
+.wtt-badge.wtt-bad {
+  background: rgba(217, 119, 6, 0.96) !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
