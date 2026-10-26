@@ -2,6 +2,7 @@ package com.webtoontr.app;
 
 import android.net.Uri;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.mlm.adblock.AdblockEngine;
 import org.mlm.adblock.BlockDecision;
@@ -46,10 +47,14 @@ final class AdBlockEngineBridge implements AutoCloseable {
         String css = resources.css();
         String js = resources.getJs();
         if ((css == null || css.isEmpty()) && (js == null || js.isEmpty())) return null;
-        return new JSONObject()
-                .put("css", css == null ? "" : css)
-                .put("js", js == null ? "" : js)
-                .toString();
+        try {
+            return new JSONObject()
+                    .put("css", css == null ? "" : css)
+                    .put("js", js == null ? "" : js)
+                    .toString();
+        } catch (JSONException ignored) {
+            return null;
+        }
     }
 
     @Override
