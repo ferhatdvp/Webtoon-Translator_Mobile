@@ -93,6 +93,7 @@ function fill() {
   $('showSfx').checked = s.render.showSfx;
   $('prefetch').value = s.render.prefetch;
   $('glossary').value = s.glossary;
+  $('adBlock').checked = s.mobile.adBlock;
   $('wifiOnly').checked = s.mobile.wifiOnly;
   $('minBattery').value = s.mobile.minBatteryPct;
   $('mobileCard').hidden = !globalThis.__WTT_ANDROID__;
@@ -163,6 +164,7 @@ async function save() {
       prefetch: $('prefetch').value,
     },
     mobile: {
+      adBlock: $('adBlock').checked,
       wifiOnly: $('wifiOnly').checked,
       minBatteryPct: num('minBattery', 15, 0, 90),
     },
