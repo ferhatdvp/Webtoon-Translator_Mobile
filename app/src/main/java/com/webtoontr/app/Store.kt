@@ -41,6 +41,9 @@ object Store {
             JSONObject()
         }
 
+    /** Mobil WebView'daki reklam engeli açık (varsayılan) mı? */
+    fun isAdBlockEnabled(): Boolean = settings().optJSONObject("mobile")?.optBoolean("adBlock", true) ?: true
+
     /** "https://www.Webtoons.com/en/x" -> "webtoons.com" (shared/sites.js normalizeHost ile aynı kural). */
     fun normalizeHost(input: String): String? {
         var s = input.trim().lowercase()
