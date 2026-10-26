@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.webtoontr.app"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.webtoontr.app"
