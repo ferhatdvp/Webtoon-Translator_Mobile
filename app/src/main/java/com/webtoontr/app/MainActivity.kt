@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private var startScript: ScriptHandler? = null
     private var pageProxy: JavaScriptReplyProxy? = null
     private var useDocStart = false
+    @Volatile private var currentPageUrl: String? = null
 
     private val allowedTypes = setOf("GET_PAGE_CONFIG", "TRANSLATE_IMAGE", "OPEN_OPTIONS")
 
@@ -129,16 +130,18 @@ class MainActivity : Activity() {
         }
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
-                if (Store.isAdBlockEnabled() && AdBlocker.shouldBlock(request)) return AdBlocker.emptyResponse()
+                if (Store.isAdBlockEnabled() && AdBlocker.shouldBlock(request, currentPageUrl)) return AdBlocker.emptyResponse()
                 return super.shouldInterceptRequest(view, request)
             }
 
             override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                currentPageUrl = url
                 pageProxy = null
                 if (!urlBar.hasFocus() && url.startsWith("http")) urlBar.setText(url)
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                if (Store.isAdBlockEnabled()) AdBlocker.injectCosmetics(view, url)
                 // document-start betiği desteklenmiyorsa yedek: sayfa bitince enjekte et.
                 if (!useDocStart && isAllowedUrl(url)) view.evaluateJavascript(bundle, null)
             }
