@@ -24,7 +24,7 @@ Bilgisayarda kendin derlemek istersen Android Studio'da **Build → Build Bundle
 ## Pil / ısı / veri için alınan önlemler
 | Önlem | Nasıl |
 |---|---|
-| Reklam engeli (varsayılan açık) | Uygulama içi tarayıcı, bilinen üçüncü taraf reklam sunucularından gelen istekleri engeller; Ayarlar → 8 · Telefon'dan kapatılabilir. Her reklamı engellemez |
+| Reklam engeli (varsayılan açık) | Brave'in adblock-rust motoruyla EasyList, EasyPrivacy ve AdGuard Türkçe filtreleri uygulanır; ağ reklamları ve sayfadaki reklam alanları filtrelenir. Kurallar haftalık yenilenir; Ayarlar → 8 · Telefon'dan kapatılabilir. Her reklamı engelleme garantisi yoktur |
 | Arka planda çeviri yok | Uygulama arka plana gidince ya da ekran kapanınca çeviri hattı tamamen durur (`WttApp.kt` → `Worker.setActive`) |
 | Yalnızca Wi-Fi (varsayılan açık) | Mobil veride hiçbir istek (indirme dahil) başlamaz; Wi-Fi gelince 15 sn içinde kendiliğinden devam. "Ölçülü" işaretli Wi-Fi / telefon hotspot'u da mobil veri sayılır |
 | Düşük pil | Pil < %15 ve şarjda değilse beklemeye alır (Ayarlar → 8 · Telefon'dan değişir) |
