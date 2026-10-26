@@ -32,6 +32,7 @@ export const DEFAULTS = {
   },
   mobile: {
     // Yalnızca Android uygulamasında kullanılır (eklentide yok sayılır).
+    adBlock: true, // bilinen üçüncü taraf reklam sunucularını WebView'da engelle
     wifiOnly: true, // mobil veride istek gönderme
     minBatteryPct: 15, // pil bu yüzdenin altındaysa (şarjda değilse) beklet; 0 = kapalı
   },
