@@ -61,9 +61,13 @@ export const GEMINI_TIMEOUT_MS = 90_000;
 
 export function buildGeminiRequest({ base64, mime, images, glossary }) {
   const batch = Array.isArray(images) && images.length > 1;
-  const prompt = buildPrompt({ provider: 'gemini', glossary }) + (batch
-    ? `\nThere are ${images.length} separate images, in order. Analyze each image independently. Return JSON exactly as {"images":[{"index":0,"texts":[...]},{"index":1,"texts":[...]}]}. Each box_2d must be relative only to its own image. Include an entry for every image, even if texts is empty.`
-    : '');
+  const basePrompt = buildPrompt({ provider: 'gemini', glossary });
+  const prompt = batch
+    ? basePrompt.replace(
+        /OUTPUT: JSON only, exactly .*$/,
+        `OUTPUT: JSON only, exactly {"images":[{"index":0,"texts":[...]},{"index":1,"texts":[...]}]}. There are ${images.length} separate images in the order attached. Analyze each independently. Each box_2d is relative only to its own image. Include an entry for every image, even if texts is empty.`,
+      )
+    : basePrompt;
   const generationConfig = {
     temperature: 0.2,
     responseMimeType: 'application/json',
