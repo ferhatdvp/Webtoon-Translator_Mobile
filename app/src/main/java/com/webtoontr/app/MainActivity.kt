@@ -123,12 +123,20 @@ class MainActivity : Activity() {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
         web.webChromeClient = object : WebChromeClient() {
+            // Never create an additional WebView for window.open()/target=_blank pop-ups.
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean = false
+
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progress.progress = newProgress
                 progress.visibility = if (newProgress in 1..99) android.view.View.VISIBLE else android.view.View.GONE
             }
         }
         web.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                if (!request.isForMainFrame || !Store.isAdBlockEnabled()) return false
+                return AdBlocker.shouldBlockNavigation(request.url.toString(), currentPageUrl, request.hasGesture())
+            }
+
             override fun shouldInterceptRequest(view: WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
                 if (Store.isAdBlockEnabled() && AdBlocker.shouldBlock(request, currentPageUrl)) return AdBlocker.emptyResponse()
                 return super.shouldInterceptRequest(view, request)
