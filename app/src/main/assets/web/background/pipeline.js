@@ -137,7 +137,41 @@ async function runProvider(img, settings) {
   return runGemini(img, settings);
 }
 
-export async function runGemini(img, settings) {
+const geminiPending = [];
+let geminiBatchTimer = null;
+let geminiBatchRunning = false;
+
+export function runGemini(img, settings) {
+  return new Promise((resolve, reject) => {
+    geminiPending.push({ img, settings, resolve, reject });
+    if (geminiPending.length >= 2) flushGeminiBatch();
+    else if (geminiBatchTimer == null) geminiBatchTimer = setTimeout(flushGeminiBatch, 100);
+  });
+}
+
+async function flushGeminiBatch() {
+  if (geminiBatchRunning || !geminiPending.length) return;
+  clearTimeout(geminiBatchTimer);
+  geminiBatchTimer = null;
+  const group = geminiPending.splice(0, 2);
+  if (group.length === 1) {
+    try { group[0].resolve(await runGeminiGroup([group[0].img], group[0].settings).then((r) => r[0])); }
+    catch (e) { group[0].reject(e); }
+  } else {
+    geminiBatchRunning = true;
+    try {
+      const results = await runGeminiGroup(group.map((x) => x.img), group[0].settings);
+      group.forEach((item, i) => item.resolve(results[i]));
+    } catch (e) {
+      group.forEach((item) => item.reject(e));
+    } finally {
+      geminiBatchRunning = false;
+    }
+  }
+  if (geminiPending.length) flushGeminiBatch();
+}
+
+async function runGeminiGroup(images, settings) {
   const { model, fallbackModel } = settings.gemini;
   const models = [...new Set([model, fallbackModel].filter(Boolean))];
   let lastErr = null;
@@ -148,8 +182,9 @@ export async function runGemini(img, settings) {
       continue;
     }
     try {
-      const r = await geminiWithRetry(m, img, settings);
-      return { ...r, model: m };
+      const r = await geminiWithRetry(m, images, settings);
+      const results = r.results || [r];
+      return results.map((result) => ({ ...result, model: m }));
     } catch (e) {
       // Yalnızca "bu modelin kotası bitti" durumlarında yedeğe geç; diğer hatalar doğrudan yükselir.
       if (e instanceof AppError && (e.code === ERR.QUOTA_DAILY || e.code === ERR.LOCAL_CAP)) {
@@ -162,7 +197,7 @@ export async function runGemini(img, settings) {
   throw lastErr || new AppError(ERR.QUOTA_DAILY);
 }
 
-async function geminiWithRetry(model, img, settings) {
+async function geminiWithRetry(model, images, settings) {
   const { apiKey } = settings.gemini;
   let attempt = 0;
   for (;;) {
@@ -174,7 +209,7 @@ async function geminiWithRetry(model, img, settings) {
         await reserve(model, settings.limits); // LOCAL_CAP burada fırlar
         reserved = true;
         try {
-          return await callGemini({ base64: img.base64, mime: img.mime, apiKey, model, glossary: settings.glossary });
+          return await callGemini({ images, apiKey, model, glossary: settings.glossary });
         } catch (err) {
           // Soğuma, kuyruktaki SONRAKİ istek başlamadan önce ayarlanmalı (yarış durumunu önler).
           if (err?.code === ERR.QUOTA_MINUTE) noteRateLimited(err.retryAfterMs ?? 30000);
@@ -183,7 +218,7 @@ async function geminiWithRetry(model, img, settings) {
         }
       });
       noteSuccess();
-      logRequest({ model, ok: true, ms: Date.now() - t0, items: r.items.length, note: r.warning });
+      logRequest({ model, ok: true, ms: Date.now() - t0, items: (r.results || [r]).reduce((n, result) => n + result.items.length, 0), note: r.warning });
       return r;
     } catch (e) {
       if (!(e instanceof AppError)) throw e;
