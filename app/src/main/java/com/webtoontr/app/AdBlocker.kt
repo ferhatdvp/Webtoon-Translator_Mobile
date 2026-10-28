@@ -20,10 +20,30 @@ object AdBlocker {
         "doubleclick.net", "googleadservices.com", "googlesyndication.com", "googletagservices.com",
         "media.net", "openx.net", "pubmatic.com", "rubiconproject.com", "sharethrough.com",
         "taboola.com", "outbrain.com", "zedo.com",
+        "popads.net", "popcash.net", "exoclick.com", "propellerads.com", "trafficjunky.net",
+        "adsterra.com", "clickadu.com", "hilltopads.net", "onclicka.com", "adf.ly", "shorte.st",
     )
 
     fun initialize(context: Context) {
         // Kept as an application startup hook; intentionally does not load native code.
+    }
+
+    /** Blocks known ad destinations and unsolicited cross-site top-level redirects. */
+    fun shouldBlockNavigation(targetUrl: String, currentPageUrl: String?, hasUserGesture: Boolean): Boolean {
+        val target = Uri.parse(targetUrl)
+        if (target.scheme != "http" && target.scheme != "https") return false
+        val host = target.host?.lowercase() ?: return false
+        if (blockedDomains.any { host == it || host.endsWith(".$it") }) return true
+        if (hasUserGesture) return false
+
+        val sourceHost = try { Uri.parse(currentPageUrl.orEmpty()).host?.lowercase() } catch (_: Exception) { null }
+            ?: return false
+        if (host == sourceHost || host.endsWith(".$sourceHost") || sourceHost.endsWith(".$host")) return false
+        // Google may redirect between regional search domains without a fresh gesture.
+        if (host.startsWith("www.google.") || host.startsWith("google.")) {
+            if (sourceHost.startsWith("www.google.") || sourceHost.startsWith("google.")) return false
+        }
+        return true
     }
 
     fun shouldBlock(request: WebResourceRequest, currentPageUrl: String?): Boolean {
