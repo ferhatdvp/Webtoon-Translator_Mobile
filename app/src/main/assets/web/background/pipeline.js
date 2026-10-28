@@ -209,7 +209,10 @@ async function geminiWithRetry(model, images, settings) {
         await reserve(model, settings.limits); // LOCAL_CAP burada fırlar
         reserved = true;
         try {
-          return await callGemini({ images, apiKey, model, glossary: settings.glossary });
+          return await callGemini({
+            ...(images.length > 1 ? { images } : images[0]),
+            apiKey, model, glossary: settings.glossary,
+          });
         } catch (err) {
           // Soğuma, kuyruktaki SONRAKİ istek başlamadan önce ayarlanmalı (yarış durumunu önler).
           if (err?.code === ERR.QUOTA_MINUTE) noteRateLimited(err.retryAfterMs ?? 30000);
