@@ -28,22 +28,15 @@ object AdBlocker {
         // Kept as an application startup hook; intentionally does not load native code.
     }
 
-    /** Blocks known ad destinations and unsolicited cross-site top-level redirects. */
+    /** Blocks known ad destinations without suppressing legitimate cross-site redirects. */
     fun shouldBlockNavigation(targetUrl: String, currentPageUrl: String?, hasUserGesture: Boolean): Boolean {
         val target = Uri.parse(targetUrl)
         if (target.scheme != "http" && target.scheme != "https") return false
         val host = target.host?.lowercase() ?: return false
         if (blockedDomains.any { host == it || host.endsWith(".$it") }) return true
-        if (hasUserGesture) return false
-
-        val sourceHost = try { Uri.parse(currentPageUrl.orEmpty()).host?.lowercase() } catch (_: Exception) { null }
-            ?: return false
-        if (host == sourceHost || host.endsWith(".$sourceHost") || sourceHost.endsWith(".$host")) return false
-        // Google may redirect between regional search domains without a fresh gesture.
-        if (host.startsWith("www.google.") || host.startsWith("google.")) {
-            if (sourceHost.startsWith("www.google.") || sourceHost.startsWith("google.")) return false
-        }
-        return true
+        // Search engines may redirect through a tracking URL after a tap. WebView drops
+        // the original gesture on that redirect, so cross-site heuristics suppress real links.
+        return false
     }
 
     fun shouldBlock(request: WebResourceRequest, currentPageUrl: String?): Boolean {
