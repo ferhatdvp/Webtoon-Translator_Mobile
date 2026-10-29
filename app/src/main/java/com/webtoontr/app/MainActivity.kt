@@ -117,14 +117,36 @@ class MainActivity : Activity() {
         s.allowFileAccess = false
         s.allowContentAccess = false
         s.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        s.setSupportMultipleWindows(false)
-        s.javaScriptCanOpenWindowsAutomatically = false
+        // Route target="_blank" links through WebChromeClient.
+        s.setSupportMultipleWindows(true)
+        s.javaScriptCanOpenWindowsAutomatically = true
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
         web.webChromeClient = object : WebChromeClient() {
-            // Never create an additional WebView for window.open()/target=_blank pop-ups.
-            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean = false
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
+                // Open pop-up links in the existing browser view instead of creating a tab.
+                val popup = WebView(this@MainActivity)
+                popup.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                        val target = request.url.toString()
+                        if (target.startsWith("http://") || target.startsWith("https://")) web.loadUrl(target)
+                        view.destroy()
+                        return true
+                    }
+
+                    @Suppress("DEPRECATION")
+                    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                        if (url.startsWith("http://") || url.startsWith("https://")) web.loadUrl(url)
+                        view.destroy()
+                        return true
+                    }
+                }
+                val transport = resultMsg.obj as WebView.WebViewTransport
+                transport.webView = popup
+                resultMsg.sendToTarget()
+                return true
+            }
 
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progress.progress = newProgress
