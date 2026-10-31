@@ -20,7 +20,7 @@ export const DEFAULTS = {
   },
   limits: {
     dailyRequestCap: 150, // model başına, Pasifik saatiyle günlük
-    minIntervalMs: 5000, // iki Gemini isteği arası asgari süre
+    minIntervalMs: 2000, // iki Gemini isteği arası asgari süre
     allowPaid: false, // true ise yerel limit uygulanmaz (kullanıcı bilerek açar)
   },
   render: {
@@ -51,7 +51,10 @@ export function deepMerge(base, patch) {
 
 export async function getSettings() {
   const { settings } = await chrome.storage.local.get('settings');
-  return deepMerge(DEFAULTS, settings || {});
+  const merged = deepMerge(DEFAULTS, settings || {});
+  // Migrate the old default pacing so existing installs receive the faster safe default too.
+  if (settings?.limits?.minIntervalMs === 5000) merged.limits.minIntervalMs = 2000;
+  return merged;
 }
 
 export async function saveSettings(patch) {
