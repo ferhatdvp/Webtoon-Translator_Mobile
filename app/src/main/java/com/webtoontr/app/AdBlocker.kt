@@ -57,7 +57,7 @@ object AdBlocker {
         val script = """(function(){
           if(window.__wttCosmeticFallback) return;
           window.__wttCosmeticFallback=true;
-          var adWords=/\\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo)\\b/i;
+          var adWords=/\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo)\b/i;
           function scan(){
             if(!document.body) return;
             var vw=window.innerWidth, vh=window.innerHeight;
