@@ -53,7 +53,38 @@ object AdBlocker {
     }
 
     fun injectCosmetics(view: WebView, pageUrl: String) {
-        // Cosmetic rules are part of the disabled native engine; no page script injection here.
+        // Conservative fallback for sticky/floating banners injected by the site itself.
+        val script = """(function(){
+          if(window.__wttCosmeticFallback) return;
+          window.__wttCosmeticFallback=true;
+          var adWords=/\\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo)\\b/i;
+          function scan(){
+            if(!document.body) return;
+            var vw=window.innerWidth, vh=window.innerHeight;
+            document.querySelectorAll('body *').forEach(function(el){
+              if(el.hasAttribute('data-wtt-ad-hidden')) return;
+              var s=getComputedStyle(el), r=el.getBoundingClientRect();
+              if((s.position!=='fixed' && s.position!=='sticky') || r.width<vw*.68 || r.height<55 || r.height>360) return;
+              if(r.bottom<vh-45 || r.top>vh-45) return;
+              var meta=[el.id,el.className,el.getAttribute('aria-label'),el.getAttribute('title')].join(' ');
+              var media=el.querySelector('iframe, img, video');
+              var close=el.querySelector('button,[role=button],[aria-label*=close i],[title*=close i]');
+              var adFrame=el.querySelector('iframe[src*="ad"],iframe[src*="banner"],iframe[src*="promo"]');
+              if(adWords.test(meta) || adFrame || (media && close && r.width>vw*.82)){
+                el.setAttribute('data-wtt-ad-hidden','1');
+                el.style.setProperty('display','none','important');
+              }
+            });
+          }
+          scan();
+          var queued=false, obs=new MutationObserver(function(){
+            if(queued) return; queued=true;
+            requestAnimationFrame(function(){queued=false;scan();});
+          });
+          obs.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
+          setInterval(scan,1800);
+        })();""".trimIndent()
+        view.post { if (view.url == pageUrl) view.evaluateJavascript(script, null) }
     }
 
     fun emptyResponse() = WebResourceResponse(
