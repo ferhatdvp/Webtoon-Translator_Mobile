@@ -2,8 +2,6 @@
 
 Telefonda çalışan mini tarayıcı. Listeye eklediğin webtoon sitelerinde görsellerdeki İngilizce yazıları Gemini (ücretsiz katman) ile Türkçeye çevirip yazının üstüne yerleştirir.
 
-> **Güncel durum:** APK, GitHub Actions ile derleniyor. Reklam engelleme şu anda temel düzeyde çalışıyor; kullanıcılar bazı reklamları görmeye devam edebilir. Çeviri sistemi çalışıyor, ancak çeviri hızı şu an biraz yavaş. Hızın ileriki güncellemelerde iyileştirilmesi hedefleniyor.
-
 ## APK'yı indirip telefona kur
 
 1. Android telefonundan [webtoon-cevirmen-debug.apk dosyasını indir](https://github.com/ferhatdvp/Webtoon-Translator_Mobile/raw/refs/heads/main/downloads/webtoon-cevirmen-debug.apk).
@@ -17,8 +15,5 @@ GitHub Actions, main dalındaki güncellemelerde APK'yı yeniden derleyip bu dep
 2. Adres çubuğuna webtoon sitesini yaz, aç → ⋮ → **Bu siteyi çeviri listesine ekle**.
 3. Bölümü oku. Çevirilen görsellerin üstünde ⏳ rozeti çıkar; bir yazıya dokununca İngilizce orijinali kısa süre görünür.
 
-## Reklam engeli ve çeviri hızı
-Reklam engeli şu anda temel düzeyde çalışıyor; tüm reklamları engellemez ve bazı reklamlar sayfalarda görüntülenebilir. Çeviri sistemi çalışıyor, ancak şu an yavaş ilerleyebilir. Çeviri hızının ileriki güncellemelerde iyileştirilmesi hedefleniyor.
-
-## Doğrulama
-APK, GitHub Actions üzerinden derleniyor. Gerçek Android WebView, web araması ve çeviri davranışlarının telefonda doğrulanması gerekiyor.
+## Güncel durum
+APK, GitHub Actions ile derleniyor. Reklam engelleme şu anda temel düzeyde çalışıyor; kullanıcılar bazı reklamları görmeye devam edebilir. Çeviri sistemi çalışıyor, ancak şu an biraz yavaş ilerleyebilir. Çeviri hızının ileriki güncellemelerde iyileştirilmesi hedefleniyor.
