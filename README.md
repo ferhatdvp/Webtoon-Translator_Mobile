@@ -2,7 +2,7 @@
 
 Telefonda çalışan mini tarayıcı. Listeye eklediğin webtoon sitelerinde görsellerdeki İngilizce yazıları Gemini (ücretsiz katman) ile Türkçeye çevirip yazının üstüne yerleştirir.
 
-> **Durum:** APK GitHub Actions ile derleniyor. Kullanıcı, gelişmiş reklam motorunu içeren sürümde arama sırasında çökme bildirdi. Çökme riskini azaltmak için bu düzeltme sürümünde yerel reklam motoru geçici olarak kapalı; bilinen reklam sağlayıcı alan adları engelleniyor. Gerçek cihazda yeniden doğrulanması gerekiyor.
+> **Güncel durum:** APK, GitHub Actions ile derleniyor. Reklam engelleme şu anda temel düzeyde çalışıyor; kullanıcılar bazı reklamları görmeye devam edebilir. Çeviri sistemi çalışıyor, ancak çeviri hızı şu an biraz yavaş. Hızın ileriki güncellemelerde iyileştirilmesi hedefleniyor.
 
 ## APK'yı indirip telefona kur
 
@@ -17,8 +17,8 @@ GitHub Actions, main dalındaki güncellemelerde APK'yı yeniden derleyip bu dep
 2. Adres çubuğuna webtoon sitesini yaz, aç → ⋮ → **Bu siteyi çeviri listesine ekle**.
 3. Bölümü oku. Çevirilen görsellerin üstünde ⏳ rozeti çıkar; bir yazıya dokununca İngilizce orijinali kısa süre görünür.
 
-## Reklam engeli
-Bu düzeltme sürümünde reklam engeli kararlılık için temel sağlayıcı alan adlarıyla sınırlı. EasyList / EasyPrivacy / AdGuard filtre motoru geçici olarak devre dışı; bu nedenle bazı reklamlar görünebilir.
+## Reklam engeli ve çeviri hızı
+Reklam engeli şu anda temel düzeyde çalışıyor; tüm reklamları engellemez ve bazı reklamlar sayfalarda görüntülenebilir. Çeviri sistemi çalışıyor, ancak şu an yavaş ilerleyebilir. Çeviri hızının ileriki güncellemelerde iyileştirilmesi hedefleniyor.
 
-## Doğrulama durumu
-APK derlemesi GitHub Actions'ta başarılı olmalı. Gerçek Android WebView, web araması ve çeviri davranışı telefonda doğrulanmalıdır.
+## Doğrulama
+APK, GitHub Actions üzerinden derleniyor. Gerçek Android WebView, web araması ve çeviri davranışlarının telefonda doğrulanması gerekiyor.
