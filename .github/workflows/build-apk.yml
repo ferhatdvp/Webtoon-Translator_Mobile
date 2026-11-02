@@ -1,5 +1,8 @@
 # Bu dosya yalnızca bir GitHub deposuna yüklerseniz işe yarar: APK'yı sizin yerinize derler.
 name: Build APK
+concurrency:
+  group: build-apk-main
+  cancel-in-progress: true
 on:
   workflow_dispatch: {}
   push:
