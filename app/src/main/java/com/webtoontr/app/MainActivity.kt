@@ -339,6 +339,7 @@ class MainActivity : Activity() {
         pm.menu.add(0, 4, 3, "Yenile")
         pm.menu.add(0, 5, 4, "Başlangıç sayfası")
         pm.menu.add(0, 6, 5, "Ayarlar")
+        pm.menu.add(0, 7, 6, "AFK çeviri modunu başlat / durdur")
         pm.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> pushToPage("TOGGLE")
@@ -347,6 +348,7 @@ class MainActivity : Activity() {
                 4 -> web.reload()
                 5 -> showStartPage()
                 6 -> SettingsActivity.launch(this)
+                7 -> pushToPage("TOGGLE_AFK")
             }
             true
         }
