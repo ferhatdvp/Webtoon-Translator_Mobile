@@ -10,8 +10,8 @@ android {
         applicationId = "com.webtoontr.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.1.4-popup-block"
+        versionCode = 6
+        versionName = "0.1.5-afk"
     }
 
     buildTypes {
