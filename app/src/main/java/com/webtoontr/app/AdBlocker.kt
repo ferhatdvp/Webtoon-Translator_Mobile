@@ -53,27 +53,58 @@ object AdBlocker {
     }
 
     fun injectCosmetics(view: WebView, pageUrl: String) {
-        // Conservative fallback for sticky/floating banners injected by the site itself.
+        // Webtoon sitelerindeki sabit reklam katmanlarını ve "devam etmek için tıkla"
+        // türü reklam geçişlerini gizle. Tek bir kartı değil, onu saran overlay'i kapat.
         val script = """(function(){
-          if(window.__wttCosmeticFallback) return;
-          window.__wttCosmeticFallback=true;
-          var adWords=/\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo)\b/i;
+          if(window.__wttAdGuardInstalled) return;
+          window.__wttAdGuardInstalled=true;
+          try {
+            window.open=function(){ return null; };
+            window.open.toString=function(){ return 'function open() { [native code] }'; };
+            document.addEventListener('click',function(e){
+              var a=e.target && e.target.closest ? e.target.closest('a[target],area[target]') : null;
+              if(a && a.target && a.target.toLowerCase()==='_blank') a.target='_self';
+            },true);
+          } catch(e) {}
+          var adWords=/\\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo|popunder)\\b/i;
+          var popupText=/devam etmek için daha fazlasına tıklayın|devam etmek için tıklayın|daha fazlası için tıklayın|click (here )?to continue|continue reading|tap to continue|click to read/i;
+          var hidden=new WeakSet();
+          function hideLayer(el){
+            if(!el || el===document.body || el===document.documentElement || hidden.has(el)) return;
+            hidden.add(el);
+            el.setAttribute('data-wtt-ad-hidden','1');
+            el.style.setProperty('display','none','important');
+            el.style.setProperty('visibility','hidden','important');
+            el.style.setProperty('pointer-events','none','important');
+          }
+          function hidePopupFrom(el){
+            var node=el, best=null, vh=window.innerHeight;
+            for(var i=0; node && i<8 && node!==document.body; i++,node=node.parentElement){
+              var s=getComputedStyle(node), r=node.getBoundingClientRect();
+              var positioned=(s.position==='fixed'||s.position==='absolute') && Number(s.zIndex||0)>=10;
+              var lower=r.bottom>vh*.55 || r.top>vh*.45;
+              if(positioned && lower && r.width>window.innerWidth*.35 && r.height>45) best=node;
+              if(positioned && r.width>=window.innerWidth*.9 && r.height>=vh*.7){ best=node; break; }
+            }
+            hideLayer(best || el);
+          }
           function scan(){
             if(!document.body) return;
             var vw=window.innerWidth, vh=window.innerHeight;
             document.querySelectorAll('body *').forEach(function(el){
               if(el.hasAttribute('data-wtt-ad-hidden')) return;
+              var txt=(el.innerText||el.textContent||'').replace(/\\s+/g,' ').trim();
+              if(txt && txt.length<260 && popupText.test(txt) && el.querySelector('button,[role=button],a')) {
+                hidePopupFrom(el); return;
+              }
               var s=getComputedStyle(el), r=el.getBoundingClientRect();
-              if((s.position!=='fixed' && s.position!=='sticky') || r.width<vw*.68 || r.height<55 || r.height>360) return;
-              if(r.bottom<vh-45 || r.top>vh-45) return;
-              var meta=[el.id,el.className,el.getAttribute('aria-label'),el.getAttribute('title')].join(' ');
-              var media=el.querySelector('iframe, img, video');
+              if((s.position!=='fixed' && s.position!=='sticky') || r.width<vw*.68 || r.height<55 || r.height>420) return;
+              if(r.bottom<vh-35 || r.top>vh-35) return;
+              var meta=[el.id,typeof el.className==='string'?el.className:'',el.getAttribute('aria-label'),el.getAttribute('title')].join(' ');
+              var media=el.querySelector('iframe,img,video');
               var close=el.querySelector('button,[role=button],[aria-label*=close i],[title*=close i]');
               var adFrame=el.querySelector('iframe[src*="ad"],iframe[src*="banner"],iframe[src*="promo"]');
-              if(adWords.test(meta) || adFrame || (media && close && r.width>vw*.82)){
-                el.setAttribute('data-wtt-ad-hidden','1');
-                el.style.setProperty('display','none','important');
-              }
+              if(adWords.test(meta) || adFrame || (media && close && r.width>vw*.82)) hideLayer(el);
             });
           }
           scan();
@@ -82,7 +113,7 @@ object AdBlocker {
             requestAnimationFrame(function(){queued=false;scan();});
           });
           obs.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
-          setInterval(scan,1800);
+          setInterval(scan,900);
         })();""".trimIndent()
         view.post { if (view.url == pageUrl) view.evaluateJavascript(script, null) }
     }
