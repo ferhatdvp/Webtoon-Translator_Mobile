@@ -66,7 +66,7 @@ object AdBlocker {
               if(a && a.target && a.target.toLowerCase()==='_blank') a.target='_self';
             },true);
           } catch(e) {}
-          var adWords=/\\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo|popunder)\\b/i;
+          var adWords=/\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo|popunder)\\b/i;
           var popupText=/devam etmek için daha fazlasına tıklayın|devam etmek için tıklayın|daha fazlası için tıklayın|click (here )?to continue|continue reading|tap to continue|click to read/i;
           var hidden=new WeakSet();
           function hideLayer(el){
@@ -93,7 +93,7 @@ object AdBlocker {
             var vw=window.innerWidth, vh=window.innerHeight;
             document.querySelectorAll('body *').forEach(function(el){
               if(el.hasAttribute('data-wtt-ad-hidden')) return;
-              var txt=(el.innerText||el.textContent||'').replace(/\\s+/g,' ').trim();
+              var txt=(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim();
               if(txt && txt.length<260 && popupText.test(txt) && el.querySelector('button,[role=button],a')) {
                 hidePopupFrom(el); return;
               }
