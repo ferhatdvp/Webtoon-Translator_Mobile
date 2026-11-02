@@ -10,8 +10,8 @@ android {
         applicationId = "com.webtoontr.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.1.5-afk"
+        versionCode = 7
+        versionName = "0.1.6-model-sync"
     }
 
     buildTypes {
