@@ -9,8 +9,8 @@ export const DEFAULTS = {
   provider: 'gemini', // 'gemini' | 'ollama'
   gemini: {
     apiKey: '',
-    model: 'gemini-3.5-flash-lite',
-    fallbackModel: 'gemini-3.1-flash-lite', // ücretsiz katmanda ayrı kota; '' = kapalı
+    model: 'gemini-3.6-flash',
+    fallbackModel: 'gemini-3.5-flash-lite', // ücretsiz katmanda ayrı kota; '' = kapalı
     confirmedFreeTier: false, // "anahtarım faturalandırmasız projeden" onayı
   },
   ollama: {
@@ -19,8 +19,8 @@ export const DEFAULTS = {
     coordMode: 'relative1000', // qwen3-vl: 'relative1000' | qwen2.5-vl: 'absolute'
   },
   limits: {
-    dailyRequestCap: 500, // model başına, Pasifik saatiyle günlük
-    minIntervalMs: 2000, // iki Gemini isteği arası asgari süre
+    dailyRequestCap: 150, // model başına, Pasifik saatiyle günlük
+    minIntervalMs: 5000, // iki Gemini isteği arası asgari süre
     allowPaid: false, // true ise yerel limit uygulanmaz (kullanıcı bilerek açar)
   },
   render: {
@@ -51,28 +51,7 @@ export function deepMerge(base, patch) {
 
 export async function getSettings() {
   const { settings } = await chrome.storage.local.get('settings');
-  const merged = deepMerge(DEFAULTS, settings || {});
-  let migrated = false;
-  // Eski mobil varsayılanlarını masaüstü eklentisiyle eşitle; kullanıcı özel seçimlerini koru.
-  if (settings?.gemini?.model === 'gemini-3.6-flash') {
-    merged.gemini.model = DEFAULTS.gemini.model;
-    migrated = true;
-  }
-  if (settings?.gemini?.fallbackModel === 'gemini-3.5-flash-lite') {
-    merged.gemini.fallbackModel = DEFAULTS.gemini.fallbackModel;
-    migrated = true;
-  }
-  if (settings?.limits?.dailyRequestCap === 150) {
-    merged.limits.dailyRequestCap = DEFAULTS.limits.dailyRequestCap;
-    migrated = true;
-  }
-  // Eski istek aralığını mobildeki hızlı varsayılana taşı.
-  if (settings?.limits?.minIntervalMs === 5000) {
-    merged.limits.minIntervalMs = 2000;
-    migrated = true;
-  }
-  if (migrated) await chrome.storage.local.set({ settings: merged });
-  return merged;
+  return deepMerge(DEFAULTS, settings || {});
 }
 
 export async function saveSettings(patch) {

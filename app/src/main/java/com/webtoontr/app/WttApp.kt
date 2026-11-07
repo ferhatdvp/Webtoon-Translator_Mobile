@@ -20,7 +20,10 @@ class WttApp : Application() {
                 }
 
                 override fun onActivityStopped(activity: Activity) {
-                    if (--started == 0) Worker.setActive(false) // uygulama arka planda: çeviri durur
+                    if (--started == 0) {
+                        val inAfkPip = activity is MainActivity && activity.isInPictureInPictureMode
+                        Worker.setActive(inAfkPip)
+                    }
                 }
 
                 override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
