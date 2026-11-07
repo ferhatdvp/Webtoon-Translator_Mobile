@@ -29,24 +29,6 @@ const RESPONSE_SCHEMA = {
   required: ['texts'],
 };
 
-const BATCH_RESPONSE_SCHEMA = {
-  type: 'OBJECT',
-  properties: {
-    images: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          index: { type: 'INTEGER' },
-          texts: RESPONSE_SCHEMA.properties.texts,
-        },
-        required: ['index', 'texts'],
-      },
-    },
-  },
-  required: ['images'],
-};
-
 // Metin tespiti için uzun "düşünme" gerekmez; düşük seviye hem hızı artırır hem token harcamasını azaltır.
 // Model bu alanı reddederse (400 + "thinking") bir kez kapatılıp istek yeniden gönderilir.
 let useThinkingConfig = true;
@@ -59,19 +41,12 @@ export const _resetThinkingConfig = () => {
 
 export const GEMINI_TIMEOUT_MS = 90_000;
 
-export function buildGeminiRequest({ base64, mime, images, glossary }) {
-  const batch = Array.isArray(images) && images.length > 1;
-  const basePrompt = buildPrompt({ provider: 'gemini', glossary });
-  const prompt = batch
-    ? basePrompt.replace(
-        /OUTPUT: JSON only, exactly .*$/,
-        `OUTPUT: JSON only, exactly {"images":[{"index":0,"texts":[...]},{"index":1,"texts":[...]}]}. There are ${images.length} separate images in the order attached. Analyze each independently. Each box_2d is relative only to its own image. Include an entry for every image, even if texts is empty.`,
-      )
-    : basePrompt;
+export function buildGeminiRequest({ base64, mime, glossary }) {
+  const prompt = buildPrompt({ provider: 'gemini', glossary });
   const generationConfig = {
     temperature: 0.2,
     responseMimeType: 'application/json',
-    responseSchema: batch ? BATCH_RESPONSE_SCHEMA : RESPONSE_SCHEMA,
+    responseSchema: RESPONSE_SCHEMA,
     maxOutputTokens: 8192,
   };
   if (useThinkingConfig) generationConfig.thinkingConfig = { thinkingLevel: 'low' };
@@ -79,9 +54,7 @@ export function buildGeminiRequest({ base64, mime, images, glossary }) {
     contents: [
       {
         role: 'user',
-        parts: [{ text: prompt }, ...(batch ? images : [{ base64, mime }]).map((image) => ({
-          inline_data: { mime_type: image.mime, data: image.base64 },
-        }))],
+        parts: [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }],
       },
     ],
     generationConfig,
@@ -114,7 +87,7 @@ export function classifyGeminiError(status, json, rawText = '') {
 }
 
 /** @returns {{items:object[], warning?:string}} */
-export function parseGeminiResponse(json, imageCount = 1) {
+export function parseGeminiResponse(json) {
   if (json?.promptFeedback?.blockReason) {
     return { items: [], warning: `Güvenlik filtresi bir bölümü engelledi (${json.promptFeedback.blockReason}).` };
   }
@@ -127,23 +100,13 @@ export function parseGeminiResponse(json, imageCount = 1) {
     const warning = fr && fr !== 'STOP' ? `Yanıt boş döndü (${fr}).` : undefined;
     return { items: [], warning };
   }
-  if (imageCount > 1) {
-    let parsed;
-    try { parsed = JSON.parse(text); } catch { throw new AppError(ERR.BAD_RESPONSE); }
-    if (!Array.isArray(parsed.images)) throw new AppError(ERR.BAD_RESPONSE);
-    return { results: Array.from({ length: imageCount }, (_, index) => {
-      const entry = parsed.images.find((item) => Number(item.index) === index);
-      const rawItems = Array.isArray(entry?.texts) ? entry.texts : [];
-      return { items: rawItems.map((item) => normalizeItem(item, { order: 'yxyx', w: 1000, h: 1000 })).filter(Boolean) };
-    }) };
-  }
   const raw = extractItems(text);
   if (raw === null) throw new AppError(ERR.BAD_RESPONSE);
   const items = raw.map((r) => normalizeItem(r, { order: 'yxyx', w: 1000, h: 1000 })).filter(Boolean);
   return { items };
 }
 
-export async function callGemini({ base64, mime, images, apiKey, model, glossary }) {
+export async function callGemini({ base64, mime, apiKey, model, glossary }) {
   const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`;
   let res;
   let text;
@@ -153,7 +116,7 @@ export async function callGemini({ base64, mime, images, apiKey, model, glossary
     res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(buildGeminiRequest({ base64, mime, images, glossary })),
+      body: JSON.stringify(buildGeminiRequest({ base64, mime, glossary })),
       signal: ctrl.signal,
     });
     text = await res.text();
@@ -173,7 +136,7 @@ export async function callGemini({ base64, mime, images, apiKey, model, glossary
   }
   if (!res.ok) throw classifyGeminiError(res.status, json, text);
   if (!json) throw new AppError(ERR.BAD_RESPONSE);
-  return parseGeminiResponse(json, images?.length || 1);
+  return parseGeminiResponse(json);
 }
 
 /** Kota harcamayan bağlantı testi: model meta verisini okur. */

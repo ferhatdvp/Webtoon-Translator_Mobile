@@ -44,6 +44,14 @@ object Store {
     /** Mobil WebView'daki reklam engeli açık (varsayılan) mı? */
     fun isAdBlockEnabled(): Boolean = settings().optJSONObject("mobile")?.optBoolean("adBlock", true) ?: true
 
+    /** Uygulama küçültülünce PiP penceresinde AFK çevirisi açık kalsın mı? */
+    fun isAfkPictureInPictureEnabled(): Boolean = settings().optBoolean("afkPictureInPicture", true)
+
+    fun setAfkPictureInPictureEnabled(enabled: Boolean) {
+        val s = settings().put("afkPictureInPicture", enabled)
+        set("settings", s.toString())
+    }
+
     /** "https://www.Webtoons.com/en/x" -> "webtoons.com" (shared/sites.js normalizeHost ile aynı kural). */
     fun normalizeHost(input: String): String? {
         var s = input.trim().lowercase()

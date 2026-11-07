@@ -5,120 +5,225 @@ import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
-/**
- * Crash-safe, domain-based ad blocking for Android WebView.
- *
- * The native filter engine is intentionally not initialized or called until its
- * Android WebView runtime issue is diagnosed. This keeps navigation and search
- * usable while the known ad-provider block rules remain active.
- */
+/** Brave's adblock-rust engine, backed by EasyList, EasyPrivacy and AdGuard Turkish rules. */
 object AdBlocker {
-    private val blockedDomains = setOf(
+    private val updateExecutor = Executors.newSingleThreadExecutor()
+    private val filterDownloadExecutor = Executors.newFixedThreadPool(4)
+    private val cosmeticExecutor = Executors.newSingleThreadExecutor()
+    private val engineLock = ReentrantReadWriteLock()
+    @Volatile private var engine: AdBlockEngineBridge? = null
+    @Volatile private var initialized = false
+
+    private val fallbackDomains = setOf(
         "adform.net", "adnxs.com", "adsrvr.org", "advertising.com", "criteo.com", "criteo.net",
         "doubleclick.net", "googleadservices.com", "googlesyndication.com", "googletagservices.com",
         "media.net", "openx.net", "pubmatic.com", "rubiconproject.com", "sharethrough.com",
-        "taboola.com", "outbrain.com", "zedo.com",
-        "popads.net", "popcash.net", "exoclick.com", "propellerads.com", "trafficjunky.net",
-        "adsterra.com", "clickadu.com", "hilltopads.net", "onclicka.com", "adf.ly", "shorte.st",
+        "taboola.com", "outbrain.com", "zedo.com", "amazon-adsystem.com", "adcolony.com",
+        "app-measurement.com", "branch.io", "chartbeat.com", "scorecardresearch.com",
+        "hotjar.com", "clarity.ms", "facebook.net", "googletagmanager.com",
     )
 
+    private val filterUrls = listOf(
+        "https://easylist.to/easylist/easylist.txt",
+        "https://easylist.to/easylist/easyprivacy.txt",
+        "https://filters.adtidy.org/extension/chromium/filters/2.txt",
+        "https://filters.adtidy.org/extension/chromium/filters/3.txt",
+        "https://filters.adtidy.org/extension/chromium/filters/13.txt",
+        "https://filters.adtidy.org/extension/chromium/filters/14.txt",
+    )
+    private const val RESOURCE_URL = "https://raw.githubusercontent.com/brave/adblock-resources/master/dist/resources.json"
+
     fun initialize(context: Context) {
-        // Kept as an application startup hook; intentionally does not load native code.
+        if (initialized) return
+        synchronized(this) {
+            if (initialized) return
+            initialized = true
+        }
+        val app = context.applicationContext
+        updateExecutor.execute { loadCachedEngine(app) }
     }
 
-    /** Blocks known ad destinations without suppressing legitimate cross-site redirects. */
-    fun shouldBlockNavigation(targetUrl: String, currentPageUrl: String?, hasUserGesture: Boolean): Boolean {
-        val target = Uri.parse(targetUrl)
-        if (target.scheme != "http" && target.scheme != "https") return false
-        val host = target.host?.lowercase() ?: return false
-        if (blockedDomains.any { host == it || host.endsWith(".$it") }) return true
-        // Search engines may redirect through a tracking URL after a tap. WebView drops
-        // the original gesture on that redirect, so cross-site heuristics suppress real links.
-        return false
+    private fun loadCachedEngine(context: Context) {
+        val rulesFile = File(context.filesDir, "adblock-filters.txt")
+        val binaryFile = File(context.filesDir, "adblock-engine.bin")
+        val resourcesFile = File(context.filesDir, "adblock-resources.json")
+        fun readResources(): String = try {
+            context.assets.open("adblock/resources.json").bufferedReader().use { it.readText() }
+        } catch (_: Exception) {
+            try { resourcesFile.takeIf { it.exists() }?.readText() ?: "{}" } catch (_: Exception) { "{}" }
+        }
+        var resources = readResources()
+
+        var active = false
+        if (binaryFile.exists()) {
+            val cached = try {
+                AdBlockEngineBridge().also {
+                    if (!it.deserializeFrom(binaryFile)) throw IllegalStateException("Cached filter engine is invalid")
+                    if (!it.loadResources(resources)) throw IllegalStateException("Ad filter resources could not load")
+                }
+            } catch (_: Exception) {
+                null
+            }
+            if (cached != null) {
+                engineLock.write {
+                    engine?.close()
+                    engine = cached
+                }
+                active = true
+            }
+        }
+
+        val fresh = active && filterUrls.indices.all { index ->
+            val sourceCache = File(context.filesDir, "adblock-filter-$index.txt")
+            sourceCache.exists() && System.currentTimeMillis() - sourceCache.lastModified() < UPDATE_INTERVAL_MS
+        } && resourcesFile.exists() && System.currentTimeMillis() - resourcesFile.lastModified() < RESOURCE_UPDATE_INTERVAL_MS
+        if (fresh) return
+
+        updateExecutor.execute {
+            // Her kaynağı ayrı sakla: tek bir sitenin kesintisi diğer filtreleri silmesin.
+            val downloads = filterUrls.mapIndexed { index, address ->
+                filterDownloadExecutor.submit<String?> {
+                    val sourceCache = File(context.filesDir, "adblock-filter-$index.txt")
+                    val downloaded = try { downloadFilter(address) } catch (_: Exception) { null }
+                    if (downloaded != null) {
+                        try { sourceCache.writeText(downloaded) } catch (_: Exception) { /* bellek içi kural kullanılabilir */ }
+                    }
+                    (downloaded ?: sourceCache.takeIf { it.exists() }?.let {
+                        try { it.readText() } catch (_: Exception) { null }
+                    })?.takeIf { it.isNotBlank() }
+                }
+            }
+            val rulesBySource = downloads.mapNotNull { try { it.get() } catch (_: Exception) { null } }
+            if (!resourcesFile.exists() || System.currentTimeMillis() - resourcesFile.lastModified() >= RESOURCE_UPDATE_INTERVAL_MS) {
+                val downloadedResources = try { downloadResources() } catch (_: Exception) { null }
+                if (downloadedResources != null) {
+                    try { resourcesFile.writeText(downloadedResources) } catch (_: Exception) { /* keep using in-memory resources */ }
+                    resources = downloadedResources
+                } else {
+                    resources = readResources()
+                }
+            }
+            // Eski sürümün birleştirilmiş önbelleğini, yeni kaynak önbellekleri oluşana dek koru.
+            val rules = rulesBySource.takeIf { it.isNotEmpty() }?.joinToString("\n") ?: rulesFile.takeIf { it.exists() }?.let {
+                try { it.readText() } catch (_: Exception) { null }
+            }
+            if (rules.isNullOrBlank()) return@execute
+
+            val replacement = try {
+                AdBlockEngineBridge().also {
+                    if (!it.loadFilterList(rules)) throw IllegalStateException("Filtre listeleri yüklenemedi")
+                    it.loadResources(resources)
+                }
+            } catch (_: Exception) {
+                return@execute
+            }
+
+            try {
+                rulesFile.writeText(rules)
+                replacement.serializeTo(binaryFile)
+            } catch (_: Exception) {
+                // The in-memory engine still works; it can be rebuilt next launch.
+            }
+            engineLock.write {
+                engine?.close()
+                engine = replacement
+            }
+        }
+    }
+
+    private fun downloadFilter(address: String): String {
+        val text = downloadText(address)
+        require(text.length > 500 && !text.trimStart().startsWith("<")) { "Filtre listesi geçersiz: $address" }
+        return text
+    }
+
+    private fun downloadResources(): String {
+        val text = downloadText(RESOURCE_URL)
+        require(text.length > 1_000 && text.trimStart().startsWith("[")) { "Ad filtre kaynakları geçersiz" }
+        return text
+    }
+
+    private fun downloadText(address: String): String {
+        val connection = (URL(address).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 20_000
+            setRequestProperty("User-Agent", "WebtoonCevirmen/0.1 (Android; adblock filter update)")
+        }
+        return try {
+            connection.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                reader.readText()
+            }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     fun shouldBlock(request: WebResourceRequest, currentPageUrl: String?): Boolean {
         if (request.isForMainFrame) return false
-        val uri = request.url
-        if (uri.scheme != "http" && uri.scheme != "https") return false
-        val host = uri.host?.lowercase() ?: return false
+        val url = request.url.toString()
+        if (request.url.scheme !in setOf("http", "https")) return false
         val sourceUrl = request.requestHeaders.entries
             .firstOrNull { it.key.equals("referer", ignoreCase = true) }?.value
             ?: currentPageUrl.orEmpty()
-        val sourceHost = Uri.parse(sourceUrl).host?.lowercase() ?: return false
-        if (host == sourceHost) return false
-        return blockedDomains.any { host == it || host.endsWith(".$it") }
+        val host = request.url.host?.lowercase() ?: return false
+        val sourceHost = try { Uri.parse(sourceUrl).host?.lowercase() } catch (_: Exception) { null }
+        if (sourceHost != null && fallbackDomains.any { hostMatches(host, it) } && host != sourceHost) return true
+
+        return engineLock.read {
+            try {
+                engine?.shouldBlock(url, sourceUrl, request.requestHeaders.entries
+                    .firstOrNull { it.key.equals("accept", ignoreCase = true) }?.value)
+                    ?: false
+            } catch (_: Exception) {
+                false
+            }
+        }
     }
 
+    private fun hostMatches(host: String, domain: String) = host == domain || host.endsWith(".$domain")
+
     fun injectCosmetics(view: WebView, pageUrl: String) {
-        // Webtoon sitelerindeki sabit reklam katmanlarını ve "devam etmek için tıkla"
-        // türü reklam geçişlerini gizle. Tek bir kartı değil, onu saran overlay'i kapat.
-        val script = """(function(){
-          if(window.__wttAdGuardInstalled) return;
-          window.__wttAdGuardInstalled=true;
-          try {
-            window.open=function(){ return null; };
-            window.open.toString=function(){ return 'function open() { [native code] }'; };
-            document.addEventListener('click',function(e){
-              var a=e.target && e.target.closest ? e.target.closest('a[target],area[target]') : null;
-              if(a && a.target && a.target.toLowerCase()==='_blank') a.target='_self';
-            },true);
-          } catch(e) {}
-          var adWords=/\b(ad|ads|advert|advertisement|banner|sponsor|promotion|promo|popunder)\\b/i;
-          var popupText=/devam etmek için daha fazlasına tıklayın|devam etmek için tıklayın|daha fazlası için tıklayın|click (here )?to continue|continue reading|tap to continue|click to read/i;
-          var hidden=new WeakSet();
-          function hideLayer(el){
-            if(!el || el===document.body || el===document.documentElement || hidden.has(el)) return;
-            hidden.add(el);
-            el.setAttribute('data-wtt-ad-hidden','1');
-            el.style.setProperty('display','none','important');
-            el.style.setProperty('visibility','hidden','important');
-            el.style.setProperty('pointer-events','none','important');
-          }
-          function hidePopupFrom(el){
-            var node=el, best=null, vh=window.innerHeight;
-            for(var i=0; node && i<8 && node!==document.body; i++,node=node.parentElement){
-              var s=getComputedStyle(node), r=node.getBoundingClientRect();
-              var positioned=(s.position==='fixed'||s.position==='absolute') && Number(s.zIndex||0)>=10;
-              var lower=r.bottom>vh*.55 || r.top>vh*.45;
-              if(positioned && lower && r.width>window.innerWidth*.35 && r.height>45) best=node;
-              if(positioned && r.width>=window.innerWidth*.9 && r.height>=vh*.7){ best=node; break; }
+        cosmeticExecutor.execute {
+            var payload: String? = null
+            // İlk uygulama açılışında motor filtreleri ağdan indiriyor olabilir.
+            for (attempt in 0 until 12) {
+                payload = engineLock.read {
+                    try { engine?.cosmetics(pageUrl) } catch (_: Exception) { null }
+                }
+                if (payload != null) break
+                Thread.sleep(500)
             }
-            hideLayer(best || el);
-          }
-          function scan(){
-            if(!document.body) return;
-            var vw=window.innerWidth, vh=window.innerHeight;
-            document.querySelectorAll('body *').forEach(function(el){
-              if(el.hasAttribute('data-wtt-ad-hidden')) return;
-              var txt=(el.innerText||el.textContent||'').replace(/\s+/g,' ').trim();
-              if(txt && txt.length<260 && popupText.test(txt) && el.querySelector('button,[role=button],a')) {
-                hidePopupFrom(el); return;
-              }
-              var s=getComputedStyle(el), r=el.getBoundingClientRect();
-              if((s.position!=='fixed' && s.position!=='sticky') || r.width<vw*.68 || r.height<55 || r.height>420) return;
-              if(r.bottom<vh-35 || r.top>vh-35) return;
-              var meta=[el.id,typeof el.className==='string'?el.className:'',el.getAttribute('aria-label'),el.getAttribute('title')].join(' ');
-              var media=el.querySelector('iframe,img,video');
-              var close=el.querySelector('button,[role=button],[aria-label*=close i],[title*=close i]');
-              var adFrame=el.querySelector('iframe[src*="ad"],iframe[src*="banner"],iframe[src*="promo"]');
-              if(adWords.test(meta) || adFrame || (media && close && r.width>vw*.82)) hideLayer(el);
-            });
-          }
-          scan();
-          var queued=false, obs=new MutationObserver(function(){
-            if(queued) return; queued=true;
-            requestAnimationFrame(function(){queued=false;scan();});
-          });
-          obs.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});
-          setInterval(scan,900);
-        })();""".trimIndent()
-        view.post { if (view.url == pageUrl) view.evaluateJavascript(script, null) }
+            val readyPayload = payload ?: return@execute
+            val data = try { JSONObject(readyPayload) } catch (_: Exception) { return@execute }
+            val css = JSONObject.quote(data.optString("css"))
+            val js = JSONObject.quote(data.optString("js"))
+            val script = """(function(){
+                var css=$css, extra=$js;
+                function apply(){
+                  if(!document.documentElement){document.addEventListener('DOMContentLoaded',apply,{once:true});return;}
+                  if(css){var s=document.createElement('style');s.textContent=css;(document.head||document.documentElement).appendChild(s);}
+                  if(extra){try{(0,eval)(extra);}catch(e){console.warn('Ad filter scriptlet failed',e);}}
+                }
+                apply();
+              })();""".trimIndent()
+            view.post { if (view.url == pageUrl) view.evaluateJavascript(script, null) }
+        }
     }
 
     fun emptyResponse() = WebResourceResponse(
         "text/plain", "utf-8", 204, "No Content", emptyMap(), ByteArrayInputStream(byteArrayOf()),
     )
+
+    private const val UPDATE_INTERVAL_MS = 7L * 24 * 60 * 60 * 1000
+    private const val RESOURCE_UPDATE_INTERVAL_MS = 30L * 24 * 60 * 60 * 1000
 }

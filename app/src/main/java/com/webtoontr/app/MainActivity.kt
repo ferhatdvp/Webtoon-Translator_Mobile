@@ -6,7 +6,10 @@ import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.app.PictureInPictureParams
+import android.util.Rational
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.ViewGroup
@@ -39,6 +42,7 @@ class MainActivity : Activity() {
     private lateinit var web: WebView
     private lateinit var urlBar: EditText
     private lateinit var progress: ProgressBar
+    private lateinit var browserBar: LinearLayout
     private lateinit var bundle: String
 
     private var appliedRules: Set<String> = emptySet()
@@ -69,6 +73,7 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.parseColor("#1e293b"))
             setPadding(dp(6), dp(4), dp(6), dp(4))
         }
+        browserBar = bar
         val back = barButton("◀") { if (web.canGoBack()) web.goBack() }
         urlBar = EditText(this).apply {
             setSingleLine(true)
@@ -109,6 +114,7 @@ class MainActivity : Activity() {
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
         root.addView(body, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         setContentView(root)
+        updatePictureInPictureParams()
 
         // ---------------- WebView ayarları ----------------
         val s = web.settings
@@ -117,26 +123,43 @@ class MainActivity : Activity() {
         s.allowFileAccess = false
         s.allowContentAccess = false
         s.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        // Route target="_blank" links through WebChromeClient.
-        s.setSupportMultipleWindows(false)
-        s.javaScriptCanOpenWindowsAutomatically = false
+        // Bağlantıların target="_blank" isteklerini WebChromeClient'a yönlendir.
+        s.setSupportMultipleWindows(true)
+        s.javaScriptCanOpenWindowsAutomatically = true
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
 
         web.webChromeClient = object : WebChromeClient() {
-            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean = false
-
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progress.progress = newProgress
                 progress.visibility = if (newProgress in 1..99) android.view.View.VISIBLE else android.view.View.GONE
             }
+
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
+                // Ayrı sekme açmak yerine hedef URL'yi mevcut tarayıcıda aç.
+                val popup = WebView(this@MainActivity)
+                popup.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
+                        val target = request.url.toString()
+                        if (target.startsWith("http://") || target.startsWith("https://")) web.loadUrl(target)
+                        view.destroy()
+                        return true
+                    }
+
+                    @Suppress("DEPRECATION")
+                    override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                        if (url.startsWith("http://") || url.startsWith("https://")) web.loadUrl(url)
+                        view.destroy()
+                        return true
+                    }
+                }
+                val transport = resultMsg.obj as WebView.WebViewTransport
+                transport.webView = popup
+                resultMsg.sendToTarget()
+                return true
+            }
         }
         web.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: android.webkit.WebResourceRequest): Boolean {
-                if (!request.isForMainFrame || !Store.isAdBlockEnabled()) return false
-                return AdBlocker.shouldBlockNavigation(request.url.toString(), currentPageUrl, request.hasGesture())
-            }
-
             override fun shouldInterceptRequest(view: WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
                 if (Store.isAdBlockEnabled() && AdBlocker.shouldBlock(request, currentPageUrl)) return AdBlocker.emptyResponse()
                 return super.shouldInterceptRequest(view, request)
@@ -339,7 +362,7 @@ class MainActivity : Activity() {
         pm.menu.add(0, 4, 3, "Yenile")
         pm.menu.add(0, 5, 4, "Başlangıç sayfası")
         pm.menu.add(0, 6, 5, "Ayarlar")
-        pm.menu.add(0, 7, 6, "AFK çeviri modunu başlat / durdur")
+        pm.menu.add(0, 7, 6, if (Store.isAfkPictureInPictureEnabled()) "AFK küçük pencereyi kapat" else "AFK küçük pencereyi aç")
         pm.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 1 -> pushToPage("TOGGLE")
@@ -348,7 +371,13 @@ class MainActivity : Activity() {
                 4 -> web.reload()
                 5 -> showStartPage()
                 6 -> SettingsActivity.launch(this)
-                7 -> pushToPage("TOGGLE_AFK")
+                7 -> {
+                    val enabled = !Store.isAfkPictureInPictureEnabled()
+                    Store.setAfkPictureInPictureEnabled(enabled)
+                    updatePictureInPictureParams()
+                    Toast.makeText(this, if (enabled) "AFK küçük pencere açıldı" else "AFK küçük pencere kapatıldı", Toast.LENGTH_SHORT).show()
+                    if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) enterPictureInPictureMode(buildPictureInPictureParams())
+                }
             }
             true
         }
@@ -380,6 +409,33 @@ class MainActivity : Activity() {
     override fun onPause() {
         web.onPause()
         super.onPause()
+    }
+
+    /** AFK açıksa kullanıcı ana ekrana/başka uygulamaya geçtiğinde webtoon'u PiP'te sürdür. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && Store.isAfkPictureInPictureEnabled() && !isInPictureInPictureMode) {
+            enterPictureInPictureMode(buildPictureInPictureParams())
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        browserBar.visibility = if (isInPictureInPictureMode) android.view.View.GONE else android.view.View.VISIBLE
+        progress.visibility = if (!isInPictureInPictureMode && progress.progress in 1..99) android.view.View.VISIBLE else android.view.View.GONE
+        if (isInPictureInPictureMode) Worker.setActive(true)
+    }
+
+    private fun buildPictureInPictureParams(): PictureInPictureParams {
+        val builder = PictureInPictureParams.Builder().setAspectRatio(Rational(9, 16))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setAutoEnterEnabled(Store.isAfkPictureInPictureEnabled())
+        }
+        return builder.build()
+    }
+
+    private fun updatePictureInPictureParams() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) setPictureInPictureParams(buildPictureInPictureParams())
     }
 
     @Deprecated("Deprecated in Java")

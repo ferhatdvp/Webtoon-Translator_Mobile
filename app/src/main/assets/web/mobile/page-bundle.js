@@ -91,12 +91,9 @@
   const MAX_TRANSIENT_RETRIES = 2;
   const GEOMETRY_POLL_MS = 250;
   const VIS_KEY = 'wtt-visible';
-  const AFK_KEY = 'wtt-afk';
-  const AFK_CHAPTERS_KEY = 'wtt-afk-chapters';
-  const AFK_START_KEY = 'wtt-afk-start';
-  const AFK_MAX_CHAPTERS = 20;
 
   const S = {
+    tipTimer: null,
     config: null,
     visible: true,
     paused: false,
@@ -112,9 +109,6 @@
     ro: null,
     resumeTimer: null,
     lastFailToast: 0,
-    afk: false,
-    afkTimer: null,
-    afkBottomSince: 0,
   };
 
   // ------------------------------------------------------------------ mesajlaşma
@@ -147,7 +141,6 @@
     if (!r?.ok || !r.allowed || !r.enabled) return;
     S.config = r;
     S.visible = loadVisible();
-    S.afk = loadAfk();
 
     S.ui = buildUI();
     S.layer = buildLayer();
@@ -170,7 +163,6 @@
 
     document.querySelectorAll('img').forEach(track);
     setInterval(syncGeometry, GEOMETRY_POLL_MS);
-    if (S.afk) startAfk();
 
     window.addEventListener('offline', () => {
       pause({ code: 'NETWORK', message: 'İnternet bağlantısı kesildi. Bağlantı gelince devam edilecek.' }, { auto: 'online' });
@@ -189,118 +181,6 @@
     } catch {
       return true;
     }
-  }
-
-  function loadAfk() {
-    try { return localStorage.getItem(AFK_KEY) === '1'; } catch { return false; }
-  }
-
-  function setAfk(enabled) {
-    if (enabled && !S.afk) {
-      try { localStorage.setItem(AFK_START_KEY, location.href); } catch { /* storage unavailable */ }
-    }
-    S.afk = enabled;
-    try {
-      localStorage.setItem(AFK_KEY, enabled ? '1' : '0');
-      if (!enabled) localStorage.removeItem(AFK_CHAPTERS_KEY);
-    } catch { /* storage unavailable */ }
-    clearInterval(S.afkTimer);
-    S.afkTimer = null;
-    S.afkBottomSince = 0;
-    if (enabled) startAfk();
-    updateStatus();
-  }
-
-  function returnToAfkStart() {
-    let startUrl = null;
-    try { startUrl = localStorage.getItem(AFK_START_KEY); } catch { /* storage unavailable */ }
-    if (!startUrl) return false;
-    try {
-      const url = new URL(startUrl);
-      if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return false;
-      localStorage.setItem(AFK_KEY, '0');
-      localStorage.removeItem(AFK_CHAPTERS_KEY);
-      location.href = url.href;
-      return true;
-    } catch { return false; }
-  }
-
-  function startAfk() {
-    if (S.afkTimer) return;
-    S.ui.toast({ key: 'afk', kind: 'info', text: 'AFK açık: sayfa görselleri çevrildikçe aşağı kaydırılacak.' });
-    S.afkTimer = setInterval(afkStep, 1200);
-    afkStep();
-  }
-
-  function findNextChapter() {
-    const candidates = [...document.querySelectorAll('a[href], area[href]')]
-      .map((el) => {
-        const label = [el.innerText, el.textContent, el.getAttribute('aria-label'), el.title,
-          el.getAttribute('data-original-title'), el.getAttribute('rel'), el.className, el.id]
-          .filter((v) => typeof v === 'string').join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
-        if (/\b(prev|previous|back)\b|önceki/.test(label)) return null;
-        let score = 0;
-        if (el.rel?.split(/\s+/).some((v) => v.toLowerCase() === 'next')) score += 100;
-        if (/\b(next|sonraki)\b/.test(label)) score += 30;
-        if (/\b(next|sonraki)[-_ ]?(chapter|page|episode|bölüm|sayfa|bolum)\b/.test(label)) score += 20;
-        if (/^(›|»|❯|❯❯|→)$/.test(label)) score += 10;
-        if (!score) return null;
-        try {
-          const url = new URL(el.href, location.href);
-          if (!/^https?:$/.test(url.protocol) || url.origin !== location.origin || url.href === location.href) return null;
-          return { url: url.href, score };
-        } catch { return null; }
-      })
-      .filter(Boolean)
-      .sort((a, b) => b.score - a.score);
-    return candidates[0]?.url || null;
-  }
-
-  function afkStep() {
-    if (!S.afk || S.dead) return;
-    const viewBottom = window.innerHeight;
-    let visiblePending = false;
-    for (const rec of S.recs.values()) {
-      const rect = rec.img.getBoundingClientRect();
-      if (rect.bottom <= 0 || rect.top >= viewBottom) continue;
-      if (rec.state === 'idle') enqueue(rec);
-      if (rec.state === 'queued' || rec.state === 'working' || rec.state === 'idle') visiblePending = true;
-    }
-    // AFK ekranı ilerletmeden önce o ekrandaki görsellerin çevirisinin tamamlanmasını bekler.
-    if (visiblePending) return;
-    const nearBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 80;
-    if (!nearBottom) {
-      S.afkBottomSince = 0;
-      window.scrollBy({ top: Math.max(400, Math.floor(window.innerHeight * 0.75)), behavior: 'smooth' });
-      return;
-    }
-    // 'near' ön çeviri ayarında observer dışında kalmış bilinen görselleri de son kontrolde sıraya al.
-    for (const rec of S.recs.values()) if (rec.state === 'idle') enqueue(rec);
-    const st = stats();
-    if (st.busy || S.paused || st.failed) {
-      S.afkBottomSince = 0;
-      return;
-    }
-    if (!S.afkBottomSince) {
-      S.afkBottomSince = Date.now();
-      return;
-    }
-    // Sayfa sonundaki gecikmeli lazy-load ve DOM eklemeleri için kısa sakinleşme aralığı.
-    if (Date.now() - S.afkBottomSince < 5000) return;
-    const chapters = Number(localStorage.getItem(AFK_CHAPTERS_KEY) || 0);
-    if (chapters >= AFK_MAX_CHAPTERS) {
-      setAfk(false);
-      S.ui.toast({ key: 'afk', kind: 'info', text: `AFK güvenlik sınırı: ${AFK_MAX_CHAPTERS} bölüm tamamlandı. Yeniden başlatmak için AFK’yi açın.` });
-      return;
-    }
-    const nextUrl = findNextChapter();
-    if (!nextUrl) {
-      setAfk(false);
-      S.ui.toast({ key: 'afk', kind: 'info', text: 'Sonraki bölüm bağlantısı bulunamadı; AFK durduruldu.' });
-      return;
-    }
-    localStorage.setItem(AFK_CHAPTERS_KEY, String(chapters + 1));
-    location.href = nextUrl;
   }
 
   // ------------------------------------------------------------------ görsel takibi
@@ -553,7 +433,8 @@
     if (e.fatal) {
       rec.state = 'queued';
       S.queue.unshift(rec);
-      const autoMs = e.code === 'QUOTA_MINUTE' ? Math.max(30000, e.retryAfterMs || 0) : 0;
+      const autoMs =
+        e.code === 'QUOTA_MINUTE' ? Math.max(30000, e.retryAfterMs || 0) : e.code === 'MOBILE_HOLD' ? 15000 : 0;
       pause(e, { autoMs });
       return;
     }
@@ -622,7 +503,12 @@
     document.documentElement.appendChild(layer);
     layer.addEventListener('mouseover', (e) => {
       const box = e.target.closest?.('.wtt-box');
-      if (box) S.ui.showTip(box.dataset.o || '', box.getBoundingClientRect());
+      if (box) {
+        S.ui.showTip(box.dataset.o || '', box.getBoundingClientRect());
+        // Dokunmatik ekranda "üstünden ayrılma" olmaz: ipucu birkaç saniye sonra kendiliğinden kapanır.
+        clearTimeout(S.tipTimer);
+        if (window.matchMedia?.('(hover: none)').matches) S.tipTimer = setTimeout(() => S.ui.hideTip(), 4500);
+      }
     });
     layer.addEventListener('mouseout', (e) => {
       if (e.target.closest?.('.wtt-box')) S.ui.hideTip();
@@ -880,33 +766,14 @@
         setVisible(Boolean(msg.visible));
         sendResponse({ ok: true, visible: S.visible });
         break;
-      case 'GET_STATUS': {
-        let hasAfkStart = false;
-        try {
-          const start = localStorage.getItem(AFK_START_KEY);
-          hasAfkStart = Boolean(start && new URL(start).origin === location.origin);
-        } catch { /* storage unavailable */ }
+      case 'GET_STATUS':
         sendResponse({
           ok: true,
           visible: S.visible,
           paused: S.paused,
           pauseInfo: S.pauseInfo,
-          afk: S.afk,
-          hasAfkStart,
           stats: stats(),
         });
-        break;
-      }
-      case 'TOGGLE_AFK':
-        setAfk(!S.afk);
-        sendResponse({ ok: true, afk: S.afk });
-        break;
-      case 'SET_AFK':
-        setAfk(Boolean(msg.enabled));
-        sendResponse({ ok: true, afk: S.afk });
-        break;
-      case 'RETURN_AFK_START':
-        sendResponse({ ok: returnToAfkStart() });
         break;
       case 'RESCAN': {
         // Önbelleği yok sayarak sayfadaki tüm görselleri yeniden çevir.
@@ -939,13 +806,28 @@
 
   // ------------------------------------------------------------------ arayüz (Shadow DOM)
 
+  /** CSS'i CSP'den etkilenmeyen yolla ekler (constructable stylesheet); olmazsa <style> elemanı. */
+  function adoptCss(root, css) {
+    try {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(css);
+      root.adoptedStyleSheets = [...(root.adoptedStyleSheets || []), sheet];
+      return;
+    } catch {
+      /* eski WebView: <style> ile dene */
+    }
+    const st = document.createElement('style');
+    st.textContent = css;
+    (root.head || root).appendChild(st);
+  }
+
   function buildUI() {
     const host = document.createElement('div');
     host.id = 'wtt-ui-host';
     host.style.cssText = 'all:initial;position:fixed;right:0;bottom:0;width:0;height:0;z-index:2147483647;';
     const root = host.attachShadow({ mode: 'closed' });
-    root.innerHTML = `
-      <style>
+    // Stil, CSSOM ile (constructable stylesheet) uygulanır: sayfanın katı CSP'si (style-src) satır içi <style>'ı engelleyebilir.
+    const UI_CSS = `
         *{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
         .dock{position:fixed;right:16px;bottom:16px;display:flex;align-items:center;gap:8px}
         .fab{width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;font-weight:800;font-size:15px;
@@ -968,10 +850,12 @@
           line-height:1.35;color:#fff;background:rgba(17,24,39,.97);box-shadow:0 4px 14px rgba(0,0,0,.4);
           pointer-events:none;white-space:pre-wrap}
         .tip small{display:block;opacity:.65;font-size:10px;letter-spacing:.06em;margin-bottom:2px}
-      </style>
+    `;
+    root.innerHTML = `
       <div class="dock"><div class="chip"></div><button class="fab" title="Çeviriyi göster/gizle (Alt+T)">TR</button></div>
       <div class="toasts"></div>
       <div class="tip"></div>`;
+    adoptCss(root, UI_CSS); // innerHTML'den SONRA (yedek <style> yolu silinmesin)
     document.documentElement.appendChild(host);
 
     const fab = root.querySelector('.fab');
@@ -1064,6 +948,5 @@
 
   init();
 })();
-
 
 })();

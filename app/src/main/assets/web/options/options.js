@@ -142,7 +142,7 @@ async function save() {
     provider,
     gemini: {
       apiKey: $('apiKey').value.trim(),
-      model: $('gModel').value.trim() || 'gemini-3.5-flash-lite',
+      model: $('gModel').value.trim() || 'gemini-3.6-flash',
       fallbackModel: $('gFallback').value.trim(),
       confirmedFreeTier: $('confirmedFree').checked,
     },
@@ -152,7 +152,7 @@ async function save() {
       coordMode: $('oCoord').value,
     },
     limits: {
-      dailyRequestCap: num('dailyCap', 500, 1, 100000),
+      dailyRequestCap: num('dailyCap', 150, 1, 100000),
       minIntervalMs: num('minInterval', 5000, 0, 60000),
       allowPaid,
     },
