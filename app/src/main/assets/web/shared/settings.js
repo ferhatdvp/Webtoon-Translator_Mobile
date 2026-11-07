@@ -9,8 +9,8 @@ export const DEFAULTS = {
   provider: 'gemini', // 'gemini' | 'ollama'
   gemini: {
     apiKey: '',
-    model: 'gemini-3.6-flash',
-    fallbackModel: 'gemini-3.5-flash-lite', // ücretsiz katmanda ayrı kota; '' = kapalı
+    model: 'gemini-3.5-flash-lite',
+    fallbackModel: 'gemini-3.1-flash-lite', // ücretsiz katmanda ayrı kota; '' = kapalı
     confirmedFreeTier: false, // "anahtarım faturalandırmasız projeden" onayı
   },
   ollama: {
@@ -19,7 +19,7 @@ export const DEFAULTS = {
     coordMode: 'relative1000', // qwen3-vl: 'relative1000' | qwen2.5-vl: 'absolute'
   },
   limits: {
-    dailyRequestCap: 150, // model başına, Pasifik saatiyle günlük
+    dailyRequestCap: 400, // model başına, Pasifik saatiyle günlük
     minIntervalMs: 5000, // iki Gemini isteği arası asgari süre
     allowPaid: false, // true ise yerel limit uygulanmaz (kullanıcı bilerek açar)
   },
@@ -49,14 +49,39 @@ export function deepMerge(base, patch) {
   return out;
 }
 
+function applyFreeTierCap(settings) {
+  const cap = DEFAULTS.limits.dailyRequestCap;
+  if (!settings.limits.allowPaid && settings.limits.dailyRequestCap > cap) {
+    settings.limits = { ...settings.limits, dailyRequestCap: cap };
+  }
+  return settings;
+}
+
 export async function getSettings() {
   const { settings } = await chrome.storage.local.get('settings');
-  return deepMerge(DEFAULTS, settings || {});
+  const next = deepMerge(DEFAULTS, settings || {});
+  const previousGemini = settings?.gemini;
+  const oldDefault = previousGemini?.model === 'gemini-3.6-flash' ||
+    (!previousGemini?.model && previousGemini?.fallbackModel === 'gemini-3.5-flash-lite');
+  if (oldDefault) {
+    // Geri alınan mobil varsayılanlarını güncelle, özel yedek modeli ve kapalı seçeneğini koru.
+    next.gemini = {
+      ...next.gemini,
+      model: DEFAULTS.gemini.model,
+      fallbackModel: next.gemini.fallbackModel === DEFAULTS.gemini.model
+        ? DEFAULTS.gemini.fallbackModel
+        : next.gemini.fallbackModel,
+    };
+    if (next.limits.dailyRequestCap === 150) {
+      next.limits = { ...next.limits, dailyRequestCap: DEFAULTS.limits.dailyRequestCap };
+    }
+  }
+  return applyFreeTierCap(next);
 }
 
 export async function saveSettings(patch) {
   const current = await getSettings();
-  const next = deepMerge(current, patch);
+  const next = applyFreeTierCap(deepMerge(current, patch));
   await chrome.storage.local.set({ settings: next });
   return next;
 }

@@ -1,6 +1,6 @@
 // options/options.js — ayarlar sayfası.
 
-import { getSettings, saveSettings } from '../shared/settings.js';
+import { DEFAULTS, getSettings, saveSettings } from '../shared/settings.js';
 import { normalizeHost } from '../shared/sites.js';
 
 const $ = (id) => document.getElementById(id);
@@ -142,7 +142,7 @@ async function save() {
     provider,
     gemini: {
       apiKey: $('apiKey').value.trim(),
-      model: $('gModel').value.trim() || 'gemini-3.6-flash',
+      model: $('gModel').value.trim() || DEFAULTS.gemini.model,
       fallbackModel: $('gFallback').value.trim(),
       confirmedFreeTier: $('confirmedFree').checked,
     },
@@ -152,7 +152,7 @@ async function save() {
       coordMode: $('oCoord').value,
     },
     limits: {
-      dailyRequestCap: num('dailyCap', 150, 1, 100000),
+      dailyRequestCap: num('dailyCap', DEFAULTS.limits.dailyRequestCap, 1, allowPaid ? 100000 : DEFAULTS.limits.dailyRequestCap),
       minIntervalMs: num('minInterval', 5000, 0, 60000),
       allowPaid,
     },
@@ -170,6 +170,7 @@ async function save() {
     },
     glossary: $('glossary').value,
   });
+  $('dailyCap').value = settings.limits.dailyRequestCap;
   msg($('saveMsg'), 'Kaydedildi ✓', 'ok');
   setTimeout(() => msg($('saveMsg'), ''), 2500);
   refreshInfo();
