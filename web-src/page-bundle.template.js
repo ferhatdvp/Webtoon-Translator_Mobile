@@ -14,6 +14,18 @@
   var listeners = [];
   var pending = new Map();
   var seq = 1;
+  var lastStatus = '';
+
+  function reportMobileStatus(status) {
+    var message = JSON.stringify({ status: status });
+    if (message === lastStatus) return;
+    try {
+      bridge.postMessage(message);
+      lastStatus = message;
+    } catch (err) {
+      // Sayfa kapanıyor olabilir.
+    }
+  }
 
   bridge.onmessage = function (e) {
     var m;

@@ -14,6 +14,18 @@
   var listeners = [];
   var pending = new Map();
   var seq = 1;
+  var lastStatus = '';
+
+  function reportMobileStatus(status) {
+    var message = JSON.stringify({ status: status });
+    if (message === lastStatus) return;
+    try {
+      bridge.postMessage(message);
+      lastStatus = message;
+    } catch (err) {
+      // Sayfa kapanıyor olabilir.
+    }
+  }
 
   bridge.onmessage = function (e) {
     var m;
@@ -92,6 +104,11 @@
   const GEOMETRY_POLL_MS = 250;
   const VIS_KEY = 'wtt-visible';
 
+  const AFK_KEY = 'wtt-afk';
+  const AFK_CHAPTERS_KEY = 'wtt-afk-chapters';
+  const AFK_START_KEY = 'wtt-afk-start';
+  const AFK_MAX_CHAPTERS = 20;
+
   const S = {
     tipTimer: null,
     config: null,
@@ -109,6 +126,10 @@
     ro: null,
     resumeTimer: null,
     lastFailToast: 0,
+    afk: false,
+    afkTimer: null,
+    afkBottomSince: 0,
+    afkNote: '',
   };
 
   // ------------------------------------------------------------------ mesajlaşma
@@ -141,6 +162,7 @@
     if (!r?.ok || !r.allowed || !r.enabled) return;
     S.config = r;
     S.visible = loadVisible();
+    S.afk = loadAfk();
 
     S.ui = buildUI();
     S.layer = buildLayer();
@@ -172,6 +194,7 @@
     });
 
     chrome.runtime.onMessage.addListener(onExtensionMessage);
+    if (S.afk) startAfk();
     updateStatus();
   }
 
@@ -181,6 +204,131 @@
     } catch {
       return true;
     }
+  }
+
+  function loadAfk() {
+    try { return localStorage.getItem(AFK_KEY) === '1'; } catch { return false; }
+  }
+
+  function setAfk(enabled, note = '') {
+    if (enabled && !S.afk) {
+      try { localStorage.setItem(AFK_START_KEY, location.href); } catch { /* storage unavailable */ }
+    }
+    S.afk = enabled;
+    S.afkNote = note;
+    try {
+      localStorage.setItem(AFK_KEY, enabled ? '1' : '0');
+      if (!enabled) localStorage.removeItem(AFK_CHAPTERS_KEY);
+    } catch { /* storage unavailable */ }
+    clearInterval(S.afkTimer);
+    S.afkTimer = null;
+    S.afkBottomSince = 0;
+    if (enabled) startAfk();
+    updateStatus();
+  }
+
+  function getAfkStart() {
+    try {
+      const startUrl = localStorage.getItem(AFK_START_KEY);
+      if (!startUrl) return null;
+      const url = new URL(startUrl);
+      return url.origin === location.origin && /^https?:$/.test(url.protocol) ? url.href : null;
+    } catch { return null; }
+  }
+
+  function returnToAfkStart() {
+    const startUrl = getAfkStart();
+    if (!startUrl) return false;
+    setAfk(false);
+    if (startUrl === location.href) window.scrollTo(0, 0);
+    else location.href = startUrl;
+    return true;
+  }
+
+  function startAfk() {
+    if (S.afkTimer) return;
+    S.ui.toast({ key: 'afk', kind: 'info', text: 'AFK açık: sayfa görselleri çevrildikçe aşağı kaydırılacak.' });
+    S.afkTimer = setInterval(afkStep, 1200);
+    afkStep();
+  }
+
+  function findNextChapter() {
+    const candidates = [...document.querySelectorAll('a[href], area[href]')]
+      .map((el) => {
+        const label = [el.innerText, el.textContent, el.getAttribute('aria-label'), el.title,
+          el.getAttribute('data-original-title'), el.getAttribute('rel'), el.className, el.id]
+          .filter((v) => typeof v === 'string').join(' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (/\b(prev|previous|back)\b|önceki/.test(label)) return null;
+        let score = 0;
+        if (el.rel?.split(/\s+/).some((v) => v.toLowerCase() === 'next')) score += 100;
+        if (/\b(next|sonraki)\b/.test(label)) score += 30;
+        if (/\b(next|sonraki)[-_ ]?(chapter|page|episode|bölüm|sayfa|bolum)\b/.test(label)) score += 20;
+        if (/^(›|»|❯|❯❯|→)$/.test(label)) score += 10;
+        if (!score) return null;
+        try {
+          const url = new URL(el.href, location.href);
+          if (!/^https?:$/.test(url.protocol) || url.origin !== location.origin) return null;
+          if (url.pathname === location.pathname && url.search === location.search) return null;
+          return { url: url.href, score };
+        } catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score);
+    return candidates[0]?.url || null;
+  }
+
+  function afkStep() {
+    if (!S.afk || S.dead || S.paused) return;
+    const viewBottom = window.innerHeight;
+    let visiblePending = false;
+    for (const rec of S.recs.values()) {
+      const rect = rec.img.getBoundingClientRect();
+      if (rect.bottom <= 0 || rect.top >= viewBottom) continue;
+      if (rec.state === 'idle') enqueue(rec);
+      if (['queued', 'working', 'idle', 'failed'].includes(rec.state)) visiblePending = true;
+    }
+    // AFK ekranı ilerletmeden önce o ekrandaki görsellerin çevirisinin tamamlanmasını bekler.
+    if (visiblePending) return;
+    const nearBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 80;
+    if (!nearBottom) {
+      S.afkBottomSince = 0;
+      window.scrollBy({ top: Math.max(1, Math.floor(viewBottom * 0.75)), behavior: 'smooth' });
+      return;
+    }
+    // 'near' ön çeviri ayarında observer dışında kalmış bilinen görselleri de son kontrolde sıraya al.
+    for (const rec of S.recs.values()) if (rec.state === 'idle') enqueue(rec);
+    const st = stats();
+    if (st.busy || S.paused || st.failed) {
+      S.afkBottomSince = 0;
+      return;
+    }
+    if (!S.afkBottomSince) {
+      S.afkBottomSince = Date.now();
+      return;
+    }
+    // Sayfa sonundaki gecikmeli lazy-load ve DOM eklemeleri için kısa sakinleşme aralığı.
+    if (Date.now() - S.afkBottomSince < 5000) return;
+    let chapters;
+    try { chapters = Number(localStorage.getItem(AFK_CHAPTERS_KEY) || 0); } catch {
+      setAfk(false, 'Bölüm sayacı kullanılamıyor.');
+      return;
+    }
+    if (!Number.isInteger(chapters) || chapters < 0 || chapters >= AFK_MAX_CHAPTERS) {
+      setAfk(false, 'Bölüm sınırına ulaşıldı.');
+      S.ui.toast({ key: 'afk', kind: 'info', text: `AFK güvenlik sınırı: ${AFK_MAX_CHAPTERS} bölüm tamamlandı. Yeniden başlatmak için AFK’yi açın.` });
+      return;
+    }
+    const nextUrl = findNextChapter();
+    if (!nextUrl) {
+      setAfk(false, 'Sonraki bölüm bulunamadı.');
+      S.ui.toast({ key: 'afk', kind: 'info', text: 'Sonraki bölüm bağlantısı bulunamadı; AFK durduruldu.' });
+      return;
+    }
+    try { localStorage.setItem(AFK_CHAPTERS_KEY, String(chapters + 1)); } catch {
+      setAfk(false, 'Bölüm sayacı kaydedilemedi.');
+      return;
+    }
+    location.href = nextUrl;
   }
 
   // ------------------------------------------------------------------ görsel takibi
@@ -736,16 +884,25 @@
     if (!S.ui) return;
     syncBadges();
     const st = stats();
+    if (typeof reportMobileStatus === 'function') {
+      reportMobileStatus({
+        ...st, active: S.active, afk: S.afk, paused: S.paused,
+        hasAfkStart: getAfkStart() !== null, note: S.pauseInfo?.message || S.afkNote,
+      });
+    }
     let label = '';
     let tone = 'idle';
     if (S.paused) {
       label = '⚠ Duraklatıldı — tıkla: devam';
       tone = 'warn';
     } else if (st.busy > 0) {
-      label = ''; // çeviri sürerken ekranda ek bilgi tutma; durum görsellerin üstündeki rozette
+      label = S.active > 0 ? `Çevriliyor… ${st.done}/${st.total}` : `Sırada… ${st.busy}`;
+      tone = 'busy';
     } else if (st.failed > 0) {
       label = `${st.done} çevrildi, ${st.failed} başarısız — tıkla: tekrar dene`;
       tone = 'warn';
+    } else if (S.afk) {
+      label = 'AFK açık';
     }
     S.ui.setStatus(label, tone, () => {
       if (S.paused) resume();
@@ -766,14 +923,24 @@
         setVisible(Boolean(msg.visible));
         sendResponse({ ok: true, visible: S.visible });
         break;
-      case 'GET_STATUS':
+      case 'GET_STATUS': {
         sendResponse({
           ok: true,
           visible: S.visible,
           paused: S.paused,
           pauseInfo: S.pauseInfo,
+          afk: S.afk,
+          hasAfkStart: getAfkStart() !== null,
           stats: stats(),
         });
+        break;
+      }
+      case 'SET_AFK':
+        setAfk(Boolean(msg.enabled));
+        sendResponse({ ok: true, afk: S.afk });
+        break;
+      case 'RETURN_AFK_START':
+        sendResponse({ ok: returnToAfkStart() });
         break;
       case 'RESCAN': {
         // Önbelleği yok sayarak sayfadaki tüm görselleri yeniden çevir.
@@ -851,17 +1018,23 @@
           pointer-events:none;white-space:pre-wrap}
         .tip small{display:block;opacity:.65;font-size:10px;letter-spacing:.06em;margin-bottom:2px}
     `;
-    root.innerHTML = `
-      <div class="dock"><div class="chip"></div><button class="fab" title="Çeviriyi göster/gizle (Alt+T)">TR</button></div>
-      <div class="toasts"></div>
-      <div class="tip"></div>`;
-    adoptCss(root, UI_CSS); // innerHTML'den SONRA (yedek <style> yolu silinmesin)
+    function make(tag, className, parent) {
+      const element = document.createElement(tag);
+      element.className = className;
+      parent.appendChild(element);
+      return element;
+    }
+    const dock = make('div', 'dock', root);
+    const chip = make('div', 'chip', dock);
+    const fab = make('button', 'fab', dock);
+    fab.type = 'button';
+    fab.textContent = 'TR';
+    fab.title = 'Çeviriyi göster/gizle (Alt+T)';
+    const toasts = make('div', 'toasts', root);
+    const tip = make('div', 'tip', root);
+    adoptCss(root, UI_CSS);
     document.documentElement.appendChild(host);
 
-    const fab = root.querySelector('.fab');
-    const chip = root.querySelector('.chip');
-    const toasts = root.querySelector('.toasts');
-    const tip = root.querySelector('.tip');
     let chipHandler = null;
 
     fab.addEventListener('click', () => setVisible(!S.visible));
@@ -923,7 +1096,9 @@
       dismiss,
       showTip(text, rect) {
         if (!text) return;
-        tip.innerHTML = '<small>ORİJİNAL (EN)</small>';
+        const heading = document.createElement('small');
+        heading.textContent = 'ORİJİNAL (EN)';
+        tip.replaceChildren(heading);
         tip.appendChild(document.createTextNode(text));
         tip.style.display = 'block';
         const th = tip.offsetHeight;

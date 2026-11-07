@@ -194,16 +194,14 @@ object AdBlocker {
 
     fun injectCosmetics(view: WebView, pageUrl: String) {
         cosmeticExecutor.execute {
-            var payload: String? = null
             // İlk uygulama açılışında motor filtreleri ağdan indiriyor olabilir.
             for (attempt in 0 until 12) {
-                payload = engineLock.read {
-                    try { engine?.cosmetics(pageUrl) } catch (_: Exception) { null }
-                }
-                if (payload != null) break
+                if (engine != null) break
                 Thread.sleep(500)
             }
-            val readyPayload = payload ?: return@execute
+            val readyPayload = engineLock.read {
+                try { engine?.cosmetics(pageUrl) } catch (_: Exception) { null }
+            } ?: return@execute
             val data = try { JSONObject(readyPayload) } catch (_: Exception) { return@execute }
             val css = JSONObject.quote(data.optString("css"))
             val js = JSONObject.quote(data.optString("js"))

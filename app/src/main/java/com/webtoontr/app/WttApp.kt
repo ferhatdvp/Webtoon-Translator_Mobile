@@ -20,10 +20,8 @@ class WttApp : Application() {
                 }
 
                 override fun onActivityStopped(activity: Activity) {
-                    if (--started == 0) {
-                        val inAfkPip = activity is MainActivity && activity.isInPictureInPictureMode
-                        Worker.setActive(inAfkPip)
-                    }
+                    // PiP görünürken Activity started durumunda kalır.
+                    if (--started == 0) Worker.setActive(false)
                 }
 
                 override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
