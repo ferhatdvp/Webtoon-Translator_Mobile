@@ -258,7 +258,7 @@
       force: false,
       loadHook: false,
       geom: '',
-      needsFit: false,
+      fitSize: '',
     };
     S.recs.set(img, rec);
     S.ro.observe(img);
@@ -650,6 +650,7 @@
     rec.overlay?.remove();
     rec.overlay = null;
     rec.geom = '';
+    rec.fitSize = '';
   }
 
   function renderOverlay(rec) {
@@ -689,7 +690,6 @@
     }
     S.layer.appendChild(ov);
     rec.overlay = ov;
-    rec.needsFit = true;
     positionOverlay(rec, true);
   }
 
@@ -700,18 +700,23 @@
     const r = rec.img.getBoundingClientRect();
     if (r.width < 2 || r.height < 2 || !rec.img.isConnected) {
       ov.style.display = 'none';
+      rec.geom = '';
+      rec.fitSize = '';
       return;
     }
     const o = S.layer.getBoundingClientRect();
     const left = r.left - o.left;
     const top = r.top - o.top;
-    const geom = `${left.toFixed(1)}|${top.toFixed(1)}|${r.width.toFixed(1)}|${r.height.toFixed(1)}`;
+    const size = `${r.width.toFixed(1)}|${r.height.toFixed(1)}`;
+    const geom = `${left.toFixed(1)}|${top.toFixed(1)}|${size}`;
     if (!force && geom === rec.geom) return;
     rec.geom = geom;
     ov.style.cssText =
-      `display:block;left:${left}px;top:${top}px;width:${r.width}px;height:${r.height}px;` +
-      `--wtt-w:${r.width}px;`;
-    if (rec.needsFit && S.visible) fitOverlay(rec);
+      `display:block;left:${left}px;top:${top}px;width:${r.width}px;height:${r.height}px;`;
+    if (S.visible && size !== rec.fitSize && ov.offsetWidth > 0 && ov.offsetHeight > 0) {
+      fitOverlay(ov);
+      rec.fitSize = size;
+    }
   }
 
   function syncGeometry() {
@@ -726,32 +731,43 @@
     }
   }
 
-  /**
-   * Her kutu için kutuya sığan en büyük punto bulunur (ikili arama). Punto, görsel genişliğine oranlanıp
-   * calc(var(--wtt-w) * oran) olarak yazılır; böylece görsel yeniden boyutlanınca yazı ölçekle birlikte değişir.
-   */
-  function fitOverlay(rec) {
-    const ov = rec.overlay;
-    if (!ov || ov.offsetWidth === 0) return;
-    const imgW = ov.offsetWidth;
-    rec.needsFit = false;
+  /** Satırlar küçülmeyen metin öğesinde ölçülür. Ekran boyutu değişirse ölçüm yeniden yapılır. */
+  function fitOverlay(ov) {
+    const minReadablePx = 8;
+    const stepsPerPx = 4;
     for (const box of ov.children) {
       const txt = box.firstElementChild;
-      const maxH = box.clientHeight;
-      if (maxH <= 0) continue;
-      const fits = () => txt.offsetHeight <= box.clientHeight + 0.5 && txt.scrollWidth <= box.clientWidth + 0.5;
-      let lo = 6;
-      let hi = Math.max(lo, Math.min(40, Math.floor(maxH)));
-      while (lo < hi) {
-        const mid = Math.ceil((lo + hi) / 2);
-        box.style.fontSize = mid + 'px';
-        if (fits()) lo = mid;
-        else hi = mid - 1;
+      const { width, height } = box.getBoundingClientRect();
+      const maxSteps = Math.floor(Math.min(40, height) * stepsPerPx);
+      const setSize = (steps) => box.style.setProperty('font-size', `${steps / stepsPerPx}px`, 'important');
+      const fits = () =>
+        width >= 1 && txt.getBoundingClientRect().height + 0.5 <= height && txt.scrollWidth <= txt.clientWidth;
+
+      function largestFit(breakWords) {
+        box.classList.toggle('wtt-break', breakWords);
+        let best = 0;
+        let lo = stepsPerPx;
+        let hi = maxSteps;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          setSize(mid);
+          if (fits()) {
+            best = mid;
+            lo = mid + 1;
+          } else {
+            hi = mid - 1;
+          }
+        }
+        return best;
       }
-      box.style.fontSize = lo + 'px';
-      if (!fits()) box.classList.add('wtt-break'); // en küçük puntoda bile sığmıyorsa uzun kelimeyi böl
-      const ratio = (lo * 0.97) / imgW;
-      box.style.fontSize = `calc(var(--wtt-w) * ${ratio.toFixed(5)})`;
+
+      const wholeWords = largestFit(false);
+      const wrapped = wholeWords < minReadablePx * stepsPerPx ? largestFit(true) : 0;
+      box.classList.toggle('wtt-break', wrapped > wholeWords);
+      const best = Math.max(wholeWords, wrapped);
+      // Ölçülemeyecek kadar küçük kutu özgün metnin üzerini kapatmasın.
+      box.style.visibility = best ? '' : 'hidden';
+      if (best) setSize(best);
     }
   }
 
