@@ -51,6 +51,7 @@ class MainActivity : Activity() {
     private lateinit var urlBar: EditText
     private lateinit var progress: ProgressBar
     private lateinit var browserBar: LinearLayout
+    private lateinit var minimizeButton: Button
     private lateinit var pipStatus: TextView
     private lateinit var bundle: String
 
@@ -60,7 +61,6 @@ class MainActivity : Activity() {
     private var useDocStart = false
     private var pageStatus: JSONObject? = null
     private var pageLoadFailed = false
-    private var enterPipAfterAfkStarts = false
     private var openingSettings = false
     @Volatile private var currentPageUrl: String? = null
 
@@ -108,8 +108,18 @@ class MainActivity : Activity() {
             }
         }
         val menu = barButton("⋮") { showMenu(it) }
+        minimizeButton = barButton("↘") {
+            if (!enterAfkPictureInPicture()) {
+                Toast.makeText(this, "Küçük pencere açılamadı. AFK bu ekranda çalışıyor.", Toast.LENGTH_LONG).show()
+            }
+        }.apply {
+            contentDescription = "AFK küçük pencereye küçült"
+            tooltipText = "Küçült"
+            visibility = View.GONE
+        }
         bar.addView(back)
         bar.addView(urlBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        bar.addView(minimizeButton)
         bar.addView(menu)
 
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -200,8 +210,8 @@ class MainActivity : Activity() {
                 pageProxy = null
                 pageStatus = null
                 pageLoadFailed = false
-                enterPipAfterAfkStarts = false
                 updatePipStatus()
+                updateBrowserChrome()
                 updatePictureInPictureParams()
                 if (!urlBar.hasFocus() && url.startsWith("http")) urlBar.setText(url)
             }
@@ -470,9 +480,7 @@ class MainActivity : Activity() {
     }
 
     private fun setAfk(enabled: Boolean) {
-        enterPipAfterAfkStarts = enabled
         if (pageStatus == null || !pushToPage("SET_AFK", ",\"enabled\":$enabled")) {
-            enterPipAfterAfkStarts = false
             Toast.makeText(this, "Sayfa henüz çeviriye hazır değil.", Toast.LENGTH_SHORT).show()
         }
     }
@@ -482,13 +490,8 @@ class MainActivity : Activity() {
         pageStatus = status
         val afk = status.optBoolean("afk")
         updatePipStatus()
+        updateBrowserChrome()
         if (wasAfk != afk) updatePictureInPictureParams()
-        if (enterPipAfterAfkStarts && afk) {
-            enterPipAfterAfkStarts = false
-            if (!enterAfkPictureInPicture()) {
-                Toast.makeText(this, "Küçük pencere açılamadı. AFK bu ekranda çalışıyor.", Toast.LENGTH_LONG).show()
-            }
-        }
     }
 
     private fun updatePipStatus() {
@@ -512,6 +515,11 @@ class MainActivity : Activity() {
     private fun updateBrowserChrome() {
         val inPip = isInPictureInPictureMode
         browserBar.visibility = if (inPip) View.GONE else View.VISIBLE
+        minimizeButton.visibility = if (!inPip && pageStatus?.optBoolean("afk") == true && supportsPip()) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         progress.visibility = if (!inPip && progress.progress in 1..99) View.VISIBLE else View.GONE
         pipStatus.visibility = if (inPip) View.VISIBLE else View.GONE
     }
