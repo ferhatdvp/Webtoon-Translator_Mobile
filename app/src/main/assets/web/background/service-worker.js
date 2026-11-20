@@ -6,7 +6,7 @@
 import { AppError, ERR, toErrorJSON } from '../shared/errors.js';
 import { getSettings, publicSettings } from '../shared/settings.js';
 import { isUrlAllowed } from '../shared/sites.js';
-import { cacheClear, cacheCount } from './cache.js';
+import { cacheClear, cacheCount, cachedPages } from './cache.js';
 import { applyOllamaOriginRule } from './net.js';
 import { assertProviderReady, translateImage } from './pipeline.js';
 import { testGemini } from './providers/gemini.js';
@@ -91,6 +91,7 @@ async function handle(msg, sender) {
       const result = await translateImage({
         url: msg.url,
         pageUrl: sender.tab.url,
+        pageTitle: typeof msg.pageTitle === 'string' ? msg.pageTitle : '',
         dataUrl: msg.dataUrl,
         force: Boolean(msg.force),
       });
@@ -106,6 +107,9 @@ async function handle(msg, sender) {
   if (!isExtensionPage(sender)) throw new AppError(ERR.NOT_ALLOWED);
 
   switch (msg?.type) {
+    case 'GET_CACHED_PAGES':
+      return { ok: true, pages: await cachedPages() };
+
     case 'GET_STATE': {
       const s = await getSettings();
       let ready = true;

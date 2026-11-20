@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+  <title>Webtoon Çevirmen</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 24px 16px; background: #0f172a; color: #e2e8f0; font: 14px/1.6 system-ui, sans-serif; }
+    main { max-width: 960px; margin: auto; }
+    header { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    h1 { font-size: 23px; line-height: 1.25; margin: 0 0 6px; }
+    h2 { font-size: 16px; margin: 0 0 14px; }
+    p { margin: 0 0 12px; }
+    .muted { color: #94a3b8; font-size: 12px; }
+    a { color: #b7d4ff; text-decoration: none; }
+    a:focus-visible, summary:focus-visible, button:focus-visible { outline: 2px solid #7cb0ff; outline-offset: 3px; }
+    .columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+    .panel { min-width: 0; padding: 16px; background: #162238; border: 1px solid #293950; border-radius: 16px; }
+    .page { display: block; margin-bottom: 10px; padding: 12px; border-radius: 10px; background: #20314b; overflow-wrap: anywhere; }
+    .page:hover { background: #2b4264; }
+    .page strong, .page small { display: block; }
+    .page strong { font-size: 14px; font-weight: 600; }
+    .page small { font-size: 11px; color: #b0c1d9; margin-top: 6px; }
+    .resume { display: inline-block; margin-top: 10px; color: white; font-weight: 600; }
+    ul { margin: 0; padding: 0; list-style: none; }
+    .sites { margin-top: 18px; }
+    .site-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .site-list a, summary, button { border-radius: 10px; border: 1px solid #33465f; padding: 8px 12px; color: #cce0ff; background: #20314b; font: inherit; cursor: pointer; }
+    summary { font-size: 12px; white-space: nowrap; }
+    .help { margin-left: auto; }
+    .instructions { margin-bottom: 18px; }
+    .instructions ol { padding-left: 22px; margin: 0; }
+    .instructions li + li { margin-top: 12px; }
+    .instructions h2 { margin-bottom: 12px; }
+    .error { color: #fcd890; }
+    @media (max-width: 340px) {
+      .columns { grid-template-columns: 1fr; }
+      header { gap: 8px; }
+      h1 { font-size: 20px; }
+    }
+  </style>
+  <script src="home.js" defer></script>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>Webtoon Çevirmen</h1><p class="muted">Okuduğun bölüme geri dön.</p></div>
+    <details id="help" class="help"><summary>Nasıl kullanılır?</summary></details>
+  </header>
+  <section id="instructions" class="panel instructions" hidden>
+    <h2>İlk kullanım</h2>
+    <ol>
+      <li><b>⋮ → Ayarlar</b> bölümünden Gemini API anahtarını gir, ücretsiz katman onayını işaretle ve bağlantıyı test edip kaydet.
+        API anahtarını <a href="https://aistudio.google.com/apikey">Google AI Studio</a> üzerinden alabilirsin.</li>
+      <li>Adres çubuğuna webtoon sitesini yaz. Site açılınca <b>⋮ → Bu siteyi çeviri listesine ekle</b> seçeneğine dokun.</li>
+      <li>Bir bölüm aç. “Çevriliyor…” yazısının ardından Türkçe metinler görsellerin üzerinde görünür.
+        Yazıya dokunduğunda İngilizce orijinali birkaç saniye görünür. <b>TR</b> düğmesi çeviriyi gizler veya gösterir.</li>
+      <li><b>⋮ → AFK modunu başlat</b> seçeneği, çeviriler tamamlandıkça sayfayı kaydırır ve uygun bir sonraki bölüm bağlantısını izler.
+        Sağ üstteki <b>↘</b> düğmesiyle istediğin zaman küçük pencereye geçebilirsin. Büyüttükten sonra aynı düğmeyle tekrar küçültebilirsin.</li>
+    </ol>
+  </section>
+  <div class="columns">
+    <section class="panel" aria-labelledby="last-heading">
+      <h2 id="last-heading">Son ziyaret</h2>
+      <div id="last-page"><p class="muted">Son ziyaret edilen sayfa okunuyor…</p></div>
+    </section>
+    <section class="panel" aria-labelledby="cache-heading">
+      <h2 id="cache-heading">Çevrilen sayfalar</h2>
+      <p class="muted">Önbellekte çevirisi bulunan bölümler. Sayfa ve görseller için internet gerekebilir.</p>
+      <p id="cache-status" class="muted" role="status">Önbellek okunuyor…</p>
+      <ul id="cached-pages"></ul>
+      <button id="retry" hidden>Tekrar dene</button>
+    </section>
+  </div>
+  <section class="panel sites" aria-labelledby="sites-heading">
+    <h2 id="sites-heading">Çeviri listen</h2>
+    <div id="sites" class="site-list"></div>
+  </section>
+</main>
+</body>
+</html>

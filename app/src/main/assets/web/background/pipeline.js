@@ -10,7 +10,7 @@
 import { AppError, ERR } from '../shared/errors.js';
 import { getSettings } from '../shared/settings.js';
 import { dedupe, ownedByTile, planTiles, sortReadingOrder, tileToGlobal } from '../shared/geometry.js';
-import { cacheGet, cachePut, hashKey, sha256Hex, tileKey, urlKey } from './cache.js';
+import { cacheGet, cachePut, hashKey, rememberCachedPage, sha256Hex, tileKey, urlKey } from './cache.js';
 import { dataUrlToBuffer, fetchImageBuffer } from './net.js';
 import { decode, renderTile } from './image.js';
 import { callGemini, disableThinkingConfig } from './providers/gemini.js';
@@ -35,10 +35,21 @@ export function assertProviderReady(settings) {
 /** Aynı görsel için eşzamanlı istekleri tek işe indirger. */
 export function translateImage(req) {
   const id = req.url;
-  if (!req.force && inflight.has(id)) return inflight.get(id);
-  const p = doTranslate(req).finally(() => inflight.delete(id));
-  inflight.set(id, p);
-  return p;
+  let p = !req.force && inflight.get(id);
+  if (!p) {
+    p = doTranslate(req).finally(() => {
+      if (inflight.get(id) === p) inflight.delete(id);
+    });
+    inflight.set(id, p);
+  }
+  return p.then(async ({ cacheKey, ...result }) => {
+    if (cacheKey) {
+      await rememberCachedPage(req.pageUrl, cacheKey, req.pageTitle).catch((error) => {
+        console.warn('[WTT] Sayfa önbellek kaydı:', error);
+      });
+    }
+    return result;
+  });
 }
 
 async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
@@ -48,7 +59,7 @@ async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
   const uKey = dataUrl ? null : await urlKey(url);
   if (!force && uKey) {
     const hit = await cacheGet(uKey);
-    if (hit) return { boxes: hit.boxes, cached: true };
+    if (hit) return { boxes: hit.boxes, cached: true, cacheKey: uKey };
   }
 
   const { buf, mime } = dataUrl ? dataUrlToBuffer(dataUrl) : await fetchImageBuffer(url, pageUrl);
@@ -59,7 +70,7 @@ async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
     const hit = await cacheGet(hKey);
     if (hit) {
       if (uKey) await cachePut(uKey, hit);
-      return { boxes: hit.boxes, cached: true };
+      return { boxes: hit.boxes, cached: true, cacheKey: uKey || hKey };
     }
   }
 
@@ -109,7 +120,10 @@ async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
       await cachePut(hKey, value);
       if (uKey) await cachePut(uKey, value);
     }
-    return { boxes, cached: false, warning: [...warnings].join(' ') || undefined };
+    return {
+      boxes, cached: false, cacheKey: warnings.size === 0 ? uKey || hKey : null,
+      warning: [...warnings].join(' ') || undefined,
+    };
   } finally {
     bitmap.close?.();
   }

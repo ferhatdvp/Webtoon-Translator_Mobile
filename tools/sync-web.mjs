@@ -16,8 +16,8 @@ const out = path.join(root, 'app/src/main/assets/web');
 // eşitlerken bunları kopyalamamak kota ayarlarının ve AFK köprüsünün korunmasını sağlar.
 const FILES = [
   'shared/sites.js', 'shared/geometry.js', 'shared/items.js',
-  'background/sites-sync.js', 'background/pipeline.js', 'background/prompts.js',
-  'background/cache.js', 'background/quota.js', 'background/scheduler.js',
+  'background/sites-sync.js', 'background/prompts.js',
+  'background/quota.js', 'background/scheduler.js',
   'background/image.js', 'background/log.js', 'background/providers/gemini.js', 'background/providers/ollama.js',
   'content/content.css', 'options/options.css',
 ];

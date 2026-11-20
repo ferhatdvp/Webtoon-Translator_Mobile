@@ -40,6 +40,7 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import org.json.JSONObject
+import org.json.JSONArray
 
 /**
  * Mini tarayıcı. İzinli sitelerde (Ayarlar'daki liste) sayfaya çeviri paketi enjekte edilir ve
@@ -47,6 +48,7 @@ import org.json.JSONObject
  * Listede olmayan sitelerde köprü hiç tanımlanmaz ve hiçbir çeviri kodu çalışmaz.
  */
 class MainActivity : Activity() {
+    private val homeUrl = Worker.BASE + "mobile/home.html"
     private lateinit var web: WebView
     private lateinit var urlBar: EditText
     private lateinit var progress: ProgressBar
@@ -109,11 +111,11 @@ class MainActivity : Activity() {
         }
         val menu = barButton("⋮") { showMenu(it) }
         minimizeButton = barButton("↘") {
-            if (!enterAfkPictureInPicture()) {
-                Toast.makeText(this, "Küçük pencere açılamadı. AFK bu ekranda çalışıyor.", Toast.LENGTH_LONG).show()
+            if (!enterSmallWindow()) {
+                Toast.makeText(this, "Küçük pencere açılamadı. Telefonun küçük pencere ayarını kontrol edin.", Toast.LENGTH_LONG).show()
             }
         }.apply {
-            contentDescription = "AFK küçük pencereye küçült"
+            contentDescription = "Uygulamayı küçük pencereye küçült"
             tooltipText = "Küçült"
             visibility = View.GONE
         }
@@ -171,7 +173,13 @@ class MainActivity : Activity() {
         web.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView, newProgress: Int) {
                 progress.progress = newProgress
+                updatePipStatus()
                 updateBrowserChrome()
+            }
+
+            override fun onReceivedTitle(view: WebView, title: String) {
+                if (!pageLoadFailed) view.url?.let { Store.rememberVisitedPage(it, title) }
+                updatePipStatus()
             }
 
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
@@ -199,8 +207,10 @@ class MainActivity : Activity() {
                 return true
             }
         }
+        val assetLoader = Worker.assetLoader(this)
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
+                if (request.url.host == Worker.HOST) return assetLoader.shouldInterceptRequest(request.url)
                 if (Store.isAdBlockEnabled() && AdBlocker.shouldBlock(request, currentPageUrl)) return AdBlocker.emptyResponse()
                 return super.shouldInterceptRequest(view, request)
             }
@@ -213,7 +223,7 @@ class MainActivity : Activity() {
                 updatePipStatus()
                 updateBrowserChrome()
                 updatePictureInPictureParams()
-                if (!urlBar.hasFocus() && url.startsWith("http")) urlBar.setText(url)
+                if (!urlBar.hasFocus()) urlBar.setText(if (url == homeUrl) "" else url)
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -225,7 +235,10 @@ class MainActivity : Activity() {
             }
 
             override fun onPageFinished(view: WebView, url: String) {
-                if (Store.isAdBlockEnabled()) AdBlocker.injectCosmetics(view, url)
+                if (url != homeUrl && !pageLoadFailed && view.url == url) {
+                    Store.rememberVisitedPage(url, view.title)
+                }
+                if (url != homeUrl && Store.isAdBlockEnabled()) AdBlocker.injectCosmetics(view, url)
                 // document-start betiği desteklenmiyorsa yedek: sayfa bitince enjekte et.
                 if (!useDocStart && isAllowedUrl(url)) view.evaluateJavascript(bundle, null)
             }
@@ -239,6 +252,15 @@ class MainActivity : Activity() {
                 .show()
         }
         useDocStart = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) {
+            WebViewCompat.addWebMessageListener(web, "__wttHome", setOf("https://${Worker.HOST}")) {
+                    _, message, origin, mainFrame, reply ->
+                if (mainFrame && origin.host == Worker.HOST && web.url == homeUrl) {
+                    val request = try { JSONObject(message.data ?: "{}") } catch (_: Exception) { JSONObject() }
+                    if (request.optString("type") == "GET_HOME_DATA") sendHomeData(request.optInt("id"), reply)
+                }
+            }
+        }
         applyOriginRules()
 
         showStartPage()
@@ -348,12 +370,29 @@ class MainActivity : Activity() {
             return
         }
         val origin = sourceOrigin.toString()
-        val msgJson = msg.toString()
         runOnUiThread {
             // Sayfa adresi: gerçek adres köken ile uyuşuyorsa onu, değilse kökeni kullan (Referer için yeterli).
             val current = web.url
             val pageUrl = if (current != null && Uri.parse(current).host == host) current else "$origin/"
-            Worker.dispatch("page", pageUrl, msgJson) { json -> answer(json) }
+            if (type == "TRANSLATE_IMAGE") msg.put("pageTitle", web.title.orEmpty().take(200))
+            Worker.dispatch("page", pageUrl, msg.toString()) { json -> answer(json) }
+        }
+    }
+
+    private fun sendHomeData(id: Int, reply: JavaScriptReplyProxy) {
+        fun respond(data: JSONObject) {
+            if (isDestroyed || web.url != homeUrl) return
+            try { reply.postMessage(data.put("id", id).toString()) } catch (_: Exception) { /* sayfa kapanmış olabilir */ }
+        }
+        respond(JSONObject().put("lastPage", Store.lastVisitedPage() ?: JSONObject.NULL)
+            .put("sites", JSONArray(Store.savedHosts())).put("cachePending", true))
+        Worker.dispatch("ext", "", "{\"type\":\"GET_CACHED_PAGES\"}") { json ->
+            runOnUiThread {
+                val result = try { JSONObject(json) } catch (_: Exception) { JSONObject() }
+                respond(JSONObject().put("cachePending", false)
+                    .put("pages", result.optJSONArray("pages") ?: JSONArray())
+                    .put("cacheError", !result.optBoolean("ok")))
+            }
         }
     }
 
@@ -389,24 +428,7 @@ class MainActivity : Activity() {
     }
 
     private fun showStartPage() {
-        val sites = Store.savedHosts()
-        val list = if (sites.isEmpty()) {
-            "<p>Henüz site eklemedin. Bir webtoon sitesini açıp <b>⋮ → Bu siteyi çeviri listesine ekle</b> de.</p>"
-        } else {
-            "<ul>" + sites.joinToString("") { "<li><a href=\"https://$it\">$it</a></li>" } + "</ul>"
-        }
-        val html = """
-            <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-            <style>body{font-family:sans-serif;background:#0f172a;color:#e2e8f0;padding:20px;line-height:1.5}
-            a{color:#7cb0ff;font-size:18px}h1{font-size:20px}li{margin:10px 0}code{background:#1e293b;padding:2px 6px;border-radius:4px}</style></head>
-            <body><h1>Webtoon Çevirmen</h1>
-            <p><b>1)</b> ⋮ → <b>Ayarlar</b>: Gemini API anahtarını gir, ücretsiz katman onayını işaretle, bağlantıyı test et.</p>
-            <p><b>2)</b> Yukarıdaki adres çubuğuna webtoon sitesini yaz, aç, ⋮ → <b>Bu siteyi çeviri listesine ekle</b>.</p>
-            <p><b>Çevirilen siteler</b></p>$list
-            <p style="opacity:.7;font-size:13px">Bir yazının üstüne dokununca İngilizce orijinali birkaç saniye görünür.</p>
-            </body></html>
-        """.trimIndent()
-        web.loadDataWithBaseURL("https://start.local/", html, "text/html", "utf-8", null)
+        web.loadUrl(homeUrl)
     }
 
     private fun showMenu(anchor: android.view.View) {
@@ -472,6 +494,7 @@ class MainActivity : Activity() {
         updatePictureInPictureParams()
         // Ayarlar'da site listesi / anahtar değişmiş olabilir.
         if (applyOriginRules()) web.reload() else pushToPage("CONFIG_CHANGED")
+        if (web.url == homeUrl) web.evaluateJavascript("window.refreshHome && window.refreshHome()", null)
     }
 
     override fun onStop() {
@@ -499,23 +522,25 @@ class MainActivity : Activity() {
         val note = status?.optString("note").orEmpty().take(120)
         val done = status?.optInt("done") ?: 0
         val total = status?.optInt("total") ?: 0
+        val prefix = if (status?.optBoolean("afk") == true) "AFK · " else ""
         pipStatus.text = when {
-            pageLoadFailed -> "AFK · Bölüm yüklenemedi"
-            status == null -> "AFK · Bölüm yükleniyor…"
-            status.optBoolean("paused") -> note.ifBlank { "AFK · Çeviri duraklatıldı" }
-            !status.optBoolean("afk") -> note.ifBlank { "AFK durdu" }
-            status.optInt("active") > 0 -> "AFK · Çevriliyor… $done/$total"
-            status.optInt("busy") > 0 -> "AFK · Sırada… $done/$total"
-            status.optInt("failed") > 0 -> "AFK · ${status.optInt("failed")} görsel çevrilemedi"
-            total > 0 -> "AFK · $done/$total çevrildi"
-            else -> "AFK · Görseller bekleniyor…"
+            pageLoadFailed -> prefix + "Sayfa yüklenemedi"
+            status == null && web.progress < 100 -> "Sayfa yükleniyor…"
+            status == null -> web.title.orEmpty().ifBlank { "Webtoon Çevirmen" }
+            status.optBoolean("paused") -> prefix + note.ifBlank { "Çeviri duraklatıldı" }
+            status.optInt("active") > 0 -> prefix + "Çevriliyor… $done/$total"
+            status.optInt("busy") > 0 -> prefix + "Sırada… $done/$total"
+            status.optInt("failed") > 0 -> prefix + "${status.optInt("failed")} görsel çevrilemedi"
+            note.isNotBlank() -> note
+            total > 0 -> prefix + "$done/$total çevrildi"
+            else -> prefix + "Görseller bekleniyor…"
         }
     }
 
     private fun updateBrowserChrome() {
         val inPip = isInPictureInPictureMode
         browserBar.visibility = if (inPip) View.GONE else View.VISIBLE
-        minimizeButton.visibility = if (!inPip && pageStatus?.optBoolean("afk") == true && supportsPip()) {
+        minimizeButton.visibility = if (!inPip && supportsPip()) {
             View.VISIBLE
         } else {
             View.GONE
@@ -527,7 +552,7 @@ class MainActivity : Activity() {
     /** Android 8–11'de ana ekrana geçiş PiP'e elle yönlendirilir. */
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && canAutoEnterPip()) enterAfkPictureInPicture()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && canAutoEnterPip()) enterSmallWindow()
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
@@ -535,6 +560,7 @@ class MainActivity : Activity() {
         if (isInPictureInPictureMode) web.onResume()
         updatePipStatus()
         updateBrowserChrome()
+        updatePictureInPictureParams()
     }
 
     private fun supportsPip() = packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
@@ -542,7 +568,7 @@ class MainActivity : Activity() {
     private fun canAutoEnterPip() =
         !openingSettings && !isInPictureInPictureMode && pageStatus?.optBoolean("afk") == true
 
-    private fun enterAfkPictureInPicture(): Boolean {
+    private fun enterSmallWindow(): Boolean {
         if (!supportsPip() || isFinishing || isInPictureInPictureMode) return false
         return try {
             enterPictureInPictureMode(buildPictureInPictureParams())

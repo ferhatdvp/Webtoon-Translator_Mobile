@@ -44,6 +44,19 @@ object Store {
     /** Mobil WebView'daki reklam engeli açık (varsayılan) mı? */
     fun isAdBlockEnabled(): Boolean = settings().optJSONObject("mobile")?.optBoolean("adBlock", true) ?: true
 
+    fun rememberVisitedPage(url: String, title: String?) {
+        val uri = try { URI(url) } catch (_: Exception) { return }
+        if (uri.scheme !in setOf("http", "https") || uri.host == null ||
+            uri.host == Worker.HOST || uri.host == "start.local") return
+        val page = JSONObject().put("url", url).put("title", title?.take(200).orEmpty().ifBlank { uri.host })
+            .put("visitedAt", System.currentTimeMillis())
+        set("mobileLastPage", page.toString())
+    }
+
+    fun lastVisitedPage(): JSONObject? = try {
+        get("mobileLastPage")?.let { JSONObject(it) }
+    } catch (_: Exception) { null }
+
     /** "https://www.Webtoons.com/en/x" -> "webtoons.com" (shared/sites.js normalizeHost ile aynı kural). */
     fun normalizeHost(input: String): String? {
         var s = input.trim().lowercase()
