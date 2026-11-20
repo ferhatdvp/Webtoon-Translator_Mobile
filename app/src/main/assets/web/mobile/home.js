@@ -91,4 +91,7 @@ element('help').addEventListener('toggle', () => {
   element('instructions').hidden = !element('help').open;
 });
 element('retry').addEventListener('click', window.refreshHome);
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) window.refreshHome();
+});
 window.refreshHome();

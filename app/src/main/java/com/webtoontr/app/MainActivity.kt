@@ -441,7 +441,7 @@ class MainActivity : Activity() {
         val saved = host?.let { Store.findSavedHost(it) }
         val pm = PopupMenu(this, anchor)
         pm.menu.add(0, 1, 0, "Çeviriyi aç / kapat")
-        if (host != null && url.startsWith("http")) {
+        if (host != null && host != Worker.HOST && url.startsWith("http")) {
             pm.menu.add(0, 2, 1, if (saved != null) "Bu siteyi listeden çıkar ($saved)" else "Bu siteyi çeviri listesine ekle")
         }
         pm.menu.add(0, 3, 2, "Sayfayı yeniden çevir (kota harcar)")
