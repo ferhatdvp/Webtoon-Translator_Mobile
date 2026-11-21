@@ -1,5 +1,8 @@
 package com.webtoontr.app
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -10,9 +13,12 @@ import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import android.view.VelocityTracker
+import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** Sayfadan bağımsız, dokunma ile tıklama ve sürüklemeyi ayıran yuvarlak kontrol. */
 class FloatingButton(
@@ -27,7 +33,8 @@ class FloatingButton(
 ) : Button(context) {
     private val positions = context.getSharedPreferences("floating_controls", Context.MODE_PRIVATE)
     private val diameter = dp(48)
-    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val configuration = ViewConfiguration.get(context)
+    private val touchSlop = configuration.scaledTouchSlop
     private var fractionX = savedFraction("x")
     private var fractionY = savedFraction("y")
     private var gestureActive = false
@@ -36,6 +43,9 @@ class FloatingButton(
     private var downY = 0f
     private var startX = 0f
     private var startY = 0f
+    private var velocity: VelocityTracker? = null
+    private var pointerId = 0
+    private var glide: ValueAnimator? = null
 
     init {
         text = label
@@ -64,8 +74,11 @@ class FloatingButton(
         container.addView(this, FrameLayout.LayoutParams(diameter, diameter, Gravity.TOP or Gravity.LEFT))
         container.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
             if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                val wasGliding = glide != null
+                stopGlide()
                 cancelGesture()
                 place()
+                if (wasGliding) savePosition()
             }
         }
         post { place() }
@@ -101,10 +114,67 @@ class FloatingButton(
         positions.edit().putFloat("$positionKey-x", normalizedX).putFloat("$positionKey-y", normalizedY).apply()
     }
 
+    private fun stopGlide() {
+        glide?.let {
+            it.removeAllListeners()
+            it.removeAllUpdateListeners()
+            it.cancel()
+        }
+        glide = null
+    }
+
+    /** Yeni dokunmada, PiP'e geçişte veya ekran kapanırken hareketi bulunduğu yerde sonlandırır. */
+    fun finishMotion() {
+        if (glide != null) {
+            stopGlide()
+            savePosition()
+        }
+        cancelGesture()
+    }
+
+    private fun recordVelocity(event: MotionEvent) {
+        val sample = MotionEvent.obtain(event)
+        // Düğme parmağı izlediğinden yerel koordinatlar değişmeyebilir; ekran koordinatlarını ölç.
+        sample.setLocation(event.rawX, event.rawY)
+        velocity?.addMovement(sample)
+        sample.recycle()
+    }
+
+    private fun startGlide(vx: Float, vy: Float) {
+        val speed = sqrt(vx * vx + vy * vy)
+        if (speed < configuration.scaledMinimumFlingVelocity) return
+        val travelTime = minOf(0.08f, dp(36) / speed)
+        val fromX = x
+        val fromY = y
+        val toX = (fromX + vx * travelTime).coerceIn(0f, maxX())
+        val toY = (fromY + vy * travelTime).coerceIn(0f, maxY())
+        if (toX == fromX && toY == fromY) return
+        val animation = ValueAnimator.ofFloat(0f, 1f)
+        animation.duration = 220L
+        animation.interpolator = DecelerateInterpolator(1.5f)
+        animation.addUpdateListener {
+            val progress = it.animatedValue as Float
+            x = fromX + (toX - fromX) * progress
+            y = fromY + (toY - fromY) * progress
+            fractionX = if (maxX() > 0) x / maxX() else 0f
+            fractionY = if (maxY() > 0) y / maxY() else 0f
+        }
+        animation.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                glide = null
+                savePosition()
+            }
+        })
+        glide = animation
+        animation.start()
+    }
+
     private fun cancelGesture() {
         gestureActive = false
         dragging = false
         isPressed = false
+        velocity?.recycle()
+        velocity = null
         parent?.requestDisallowInterceptTouchEvent(false)
     }
 
@@ -123,28 +193,45 @@ class FloatingButton(
         if (!isEnabled) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                finishMotion()
                 gestureActive = true
                 dragging = false
                 downX = event.rawX
                 downY = event.rawY
                 startX = x
                 startY = y
+                pointerId = event.getPointerId(0)
+                velocity = VelocityTracker.obtain()
+                recordVelocity(event)
                 isPressed = true
                 parent?.requestDisallowInterceptTouchEvent(true)
             }
-            MotionEvent.ACTION_MOVE -> if (gestureActive) move(event)
+            MotionEvent.ACTION_MOVE -> if (gestureActive) {
+                recordVelocity(event)
+                move(event)
+            }
             MotionEvent.ACTION_UP -> if (gestureActive) {
+                recordVelocity(event)
                 move(event)
                 val shouldClick = !dragging
+                velocity?.computeCurrentVelocity(1000, configuration.scaledMaximumFlingVelocity.toFloat())
+                val vx = velocity?.getXVelocity(pointerId) ?: 0f
+                val vy = velocity?.getYVelocity(pointerId) ?: 0f
                 if (dragging) savePosition()
                 cancelGesture()
                 if (shouldClick) performClick()
+                else startGlide(vx, vy)
             }
             MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> {
-                cancelGesture()
+                finishMotion()
                 place()
             }
         }
         return true
+    }
+
+    override fun onDetachedFromWindow() {
+        finishMotion()
+        super.onDetachedFromWindow()
     }
 }

@@ -142,11 +142,14 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM,
         ))
         minimizeButton = FloatingButton(
-            this, body, "minimize", "↘", "Küçük pencereye geç", Color.rgb(51, 65, 85), 64,
+            this, body, "minimize", "", "Küçük pencereye geç", Color.rgb(30, 97, 128), 64,
         ) {
             if (!enterSmallWindow()) {
                 Toast.makeText(this, "Küçük pencere açılamadı. Telefonun küçük pencere ayarını kontrol edin.", Toast.LENGTH_LONG).show()
             }
+        }.apply {
+            foreground = getDrawable(R.drawable.ic_picture_in_picture)
+            foregroundGravity = Gravity.CENTER
         }
         translationButton = FloatingButton(
             this, body, "translation", "TR", "Çeviriyi gizle", Color.rgb(43, 108, 255), 0,
@@ -499,6 +502,8 @@ class MainActivity : Activity() {
     }
 
     override fun onStop() {
+        minimizeButton.finishMotion()
+        translationButton.finishMotion()
         web.onPause()
         super.onStop()
     }
@@ -540,6 +545,8 @@ class MainActivity : Activity() {
 
     private fun updateBrowserChrome() {
         val inPip = isInPictureInPictureMode
+        if (inPip) minimizeButton.finishMotion()
+        if (inPip || pageStatus == null) translationButton.finishMotion()
         browserBar.visibility = if (inPip) View.GONE else View.VISIBLE
         minimizeButton.visibility = if (!inPip && supportsPip()) {
             View.VISIBLE
