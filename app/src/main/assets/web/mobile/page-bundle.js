@@ -877,6 +877,7 @@
       /* yoksay */
     }
     applyVisible();
+    updateStatus();
   }
 
   // ------------------------------------------------------------------ durum
@@ -902,7 +903,7 @@
     const st = stats();
     if (typeof reportMobileStatus === 'function') {
       reportMobileStatus({
-        ...st, active: S.active, afk: S.afk, paused: S.paused,
+        ...st, active: S.active, afk: S.afk, paused: S.paused, visible: S.visible,
         hasAfkStart: getAfkStart() !== null, note: S.pauseInfo?.message || S.afkNote,
       });
     }
@@ -1048,6 +1049,15 @@
     fab.title = 'Çeviriyi göster/gizle (Alt+T)';
     const toasts = make('div', 'toasts', root);
     const tip = make('div', 'tip', root);
+    if (typeof reportMobileStatus === 'function') {
+      // Android'de TR düğmesi, küçültme düğmesiyle aynı sürüklenebilir katmanda yer alır.
+      fab.style.display = 'none';
+      dock.style.left = '16px';
+      dock.style.right = '80px';
+      chip.style.maxWidth = '100%';
+      toasts.style.right = '80px';
+      toasts.style.maxWidth = 'calc(100vw - 96px)';
+    }
     adoptCss(root, UI_CSS);
     document.documentElement.appendChild(host);
 

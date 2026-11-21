@@ -53,7 +53,8 @@ class MainActivity : Activity() {
     private lateinit var urlBar: EditText
     private lateinit var progress: ProgressBar
     private lateinit var browserBar: LinearLayout
-    private lateinit var minimizeButton: Button
+    private lateinit var minimizeButton: FloatingButton
+    private lateinit var translationButton: FloatingButton
     private lateinit var pipStatus: TextView
     private lateinit var bundle: String
 
@@ -110,18 +111,8 @@ class MainActivity : Activity() {
             }
         }
         val menu = barButton("⋮") { showMenu(it) }
-        minimizeButton = barButton("↘") {
-            if (!enterSmallWindow()) {
-                Toast.makeText(this, "Küçük pencere açılamadı. Telefonun küçük pencere ayarını kontrol edin.", Toast.LENGTH_LONG).show()
-            }
-        }.apply {
-            contentDescription = "Uygulamayı küçük pencereye küçült"
-            tooltipText = "Küçült"
-            visibility = View.GONE
-        }
         bar.addView(back)
         bar.addView(urlBar, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        bar.addView(minimizeButton)
         bar.addView(menu)
 
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -150,6 +141,16 @@ class MainActivity : Activity() {
         body.addView(pipStatus, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM,
         ))
+        minimizeButton = FloatingButton(
+            this, body, "minimize", "↘", "Küçük pencereye geç", Color.rgb(51, 65, 85), 64,
+        ) {
+            if (!enterSmallWindow()) {
+                Toast.makeText(this, "Küçük pencere açılamadı. Telefonun küçük pencere ayarını kontrol edin.", Toast.LENGTH_LONG).show()
+            }
+        }
+        translationButton = FloatingButton(
+            this, body, "translation", "TR", "Çeviriyi gizle", Color.rgb(43, 108, 255), 0,
+        ) { pushToPage("TOGGLE") }.apply { visibility = View.GONE }
 
         root.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)))
@@ -547,6 +548,10 @@ class MainActivity : Activity() {
         }
         progress.visibility = if (!inPip && progress.progress in 1..99) View.VISIBLE else View.GONE
         pipStatus.visibility = if (inPip) View.VISIBLE else View.GONE
+        translationButton.visibility = if (!inPip && pageStatus != null) View.VISIBLE else View.GONE
+        val translationVisible = pageStatus?.optBoolean("visible", true) ?: true
+        translationButton.isSelected = !translationVisible
+        translationButton.contentDescription = if (translationVisible) "Çeviriyi gizle" else "Çeviriyi göster"
     }
 
     /** Android 8–11'de ana ekrana geçiş PiP'e elle yönlendirilir. */
