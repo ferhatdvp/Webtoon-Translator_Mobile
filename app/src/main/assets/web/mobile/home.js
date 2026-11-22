@@ -1,4 +1,5 @@
 'use strict';
+import { normalizeSourceLanguage, SOURCE_LANGUAGES } from '../shared/languages.js';
 
 const homeBridge = window.__wttHome;
 let requestId = 0;
@@ -70,6 +71,7 @@ if (homeBridge) homeBridge.onmessage = (event) => {
     if (!element('sites').childElementCount) element('sites').textContent = 'Çeviri listene eklediğin siteler burada görünür.';
   }
   if (!data.cachePending) {
+    element('cache-language').textContent = SOURCE_LANGUAGES[normalizeSourceLanguage(data.sourceLanguage)].label;
     clearTimeout(timeout);
     element('cached-pages').replaceChildren();
     if (data.cacheError) { cacheError(); return; }

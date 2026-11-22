@@ -395,6 +395,7 @@ class MainActivity : Activity() {
                 val result = try { JSONObject(json) } catch (_: Exception) { JSONObject() }
                 respond(JSONObject().put("cachePending", false)
                     .put("pages", result.optJSONArray("pages") ?: JSONArray())
+                    .put("sourceLanguage", result.optString("sourceLanguage", "en"))
                     .put("cacheError", !result.optBoolean("ok")))
             }
         }

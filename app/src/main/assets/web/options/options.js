@@ -76,6 +76,7 @@ $('addSite').addEventListener('click', async () => {
 
 function fill() {
   const s = settings;
+  $('sourceLanguage').value = s.sourceLanguage;
   document.querySelector(`input[name="provider"][value="${s.provider}"]`).checked = true;
   $('apiKey').value = s.gemini.apiKey;
   $('gModel').value = s.gemini.model;
@@ -140,6 +141,7 @@ async function save() {
 
   settings = await saveSettings({
     provider,
+    sourceLanguage: $('sourceLanguage').value,
     gemini: {
       apiKey: $('apiKey').value.trim(),
       model: $('gModel').value.trim() || DEFAULTS.gemini.model,

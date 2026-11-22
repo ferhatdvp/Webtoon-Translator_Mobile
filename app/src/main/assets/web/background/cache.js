@@ -2,6 +2,7 @@
 // Üç tür anahtar kullanılır:  u:<url-hash>  (aynı URL, indirmeye bile gerek yok)
 //                             h:<içerik-hash> (farklı URL'de aynı görsel)
 //                             t:<içerik-hash>:<parça>  (yarım kalan uzun görselin parçaları)
+import { normalizeSourceLanguage } from '../shared/languages.js';
 
 const DB_NAME = 'wtt-cache';
 const STORE = 'results';
@@ -120,7 +121,7 @@ export async function rememberCachedPage(pageUrl, imageKey, title = '') {
 }
 
 /** Silinmiş veya tahliye edilmiş sonuçlar listede önbellekteymiş gibi gösterilmez. */
-export async function cachedPages() {
+export async function cachedPages(sourceLanguage = 'en') {
   const db = await open();
   const tx = db.transaction([STORE, PAGES]);
   const done = txDone(tx);
@@ -129,8 +130,12 @@ export async function cachedPages() {
     wrap(tx.objectStore(PAGES).getAll()),
   ]);
   await done;
-  const available = new Set(keys.filter((key) =>
-    key.startsWith(`u:${PIPELINE_VERSION}:`) || key.startsWith(`h:${PIPELINE_VERSION}:`)));
+  const language = normalizeSourceLanguage(sourceLanguage);
+  const available = new Set(keys.filter((key) => {
+    const parts = key.split(':');
+    return (parts[0] === 'u' || parts[0] === 'h') && parts[1] === String(PIPELINE_VERSION) &&
+      (language === 'en' ? parts.length === 3 : parts[2] === language);
+  }));
   return pages.map((page) => ({
     url: page.url, title: page.title, updatedAt: page.updatedAt,
     imageCount: page.keys.filter((key) => available.has(key)).length,
@@ -161,10 +166,16 @@ export function normalizeUrlForCache(url) {
   }
 }
 
-export async function urlKey(url) {
-  const bytes = new TextEncoder().encode(normalizeUrlForCache(url));
-  return `u:${PIPELINE_VERSION}:${await sha256Hex(bytes)}`;
+function languagePrefix(sourceLanguage) {
+  const language = normalizeSourceLanguage(sourceLanguage);
+  // Önceki İngilizce çevirilerin anahtarlarını koru.
+  return language === 'en' ? '' : language + ':';
 }
 
-export const hashKey = (hash) => `h:${PIPELINE_VERSION}:${hash}`;
-export const tileKey = (hash, tile) => `t:${PIPELINE_VERSION}:${hash}:${tile.index}/${tile.count}`;
+export async function urlKey(url, sourceLanguage = 'en') {
+  const bytes = new TextEncoder().encode(normalizeUrlForCache(url));
+  return `u:${PIPELINE_VERSION}:${languagePrefix(sourceLanguage)}${await sha256Hex(bytes)}`;
+}
+
+export const hashKey = (hash, language = 'en') => `h:${PIPELINE_VERSION}:${languagePrefix(language)}${hash}`;
+export const tileKey = (hash, tile, language = 'en') => `t:${PIPELINE_VERSION}:${languagePrefix(language)}${hash}:${tile.index}/${tile.count}`;

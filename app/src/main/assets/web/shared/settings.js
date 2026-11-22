@@ -3,10 +3,13 @@
 // Arka plan, popup ve ayarlar sayfası bu modülü kullanır. İçerik betiği kullanmaz
 // (anahtar sayfaya sızmasın diye storage erişimi TRUSTED_CONTEXTS'e kısıtlanır).
 
+import { normalizeSourceLanguage } from './languages.js';
+
 export const DEFAULTS = {
   enabled: true, // genel ana şalter
   sites: [], // [{ host: 'webtoons.com', enabled: true, addedAt: 0 }]
   provider: 'gemini', // 'gemini' | 'ollama'
+  sourceLanguage: 'en', // en | ko | ja, hedef dil Türkçe
   gemini: {
     apiKey: '',
     model: 'gemini-3.5-flash-lite',
@@ -36,7 +39,7 @@ export const DEFAULTS = {
     wifiOnly: true, // mobil veride istek gönderme
     minBatteryPct: 15, // pil bu yüzdenin altındaysa (şarjda değilse) beklet; 0 = kapalı
   },
-  glossary: '', // satır başına: English = Türkçe
+  glossary: '', // satır başına: kaynak dildeki ifade = Türkçe
 };
 
 export function deepMerge(base, patch) {
@@ -50,6 +53,7 @@ export function deepMerge(base, patch) {
 }
 
 function applyFreeTierCap(settings) {
+  settings.sourceLanguage = normalizeSourceLanguage(settings.sourceLanguage);
   const cap = DEFAULTS.limits.dailyRequestCap;
   if (!settings.limits.allowPaid && settings.limits.dailyRequestCap > cap) {
     settings.limits = { ...settings.limits, dailyRequestCap: cap };

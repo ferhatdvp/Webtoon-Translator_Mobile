@@ -25,6 +25,14 @@
     <!-- 2) SAĞLAYICI -->
     <section class="card">
       <h2>2 · Çeviri sağlayıcısı</h2>
+      <label>Çeviri dili
+        <select id="sourceLanguage">
+          <option value="en">İngilizce → Türkçe</option>
+          <option value="ko">Korece → Türkçe</option>
+          <option value="ja">Japonca → Türkçe</option>
+        </select>
+      </label>
+      <p class="hint">Okuduğun bölümün kaynak dilini seç. Dil değiştiğinde açık bölüm yeniden yüklenir; her dilin çevirileri ayrı önbellekte tutulur.</p>
       <div class="radios">
         <label><input type="radio" name="provider" value="gemini" /> <b>Gemini (Google AI Studio)</b> — ücretsiz katman, hızlı, en iyi sonuç</label>
         <label><input type="radio" name="provider" value="ollama" /> <b>Ollama (yerel)</b> — tamamen ücretsiz ve kotasız, kendi bilgisayarında çalışır</label>
@@ -131,7 +139,7 @@
     <!-- 5) SÖZLÜK -->
     <section class="card">
       <h2>5 · Sözlük (isim / terim tutarlılığı)</h2>
-      <p class="hint">Satır başına bir tane: <code>English = Türkçe</code>. Karakter adlarını sabitlemek için kullanışlıdır.</p>
+      <p class="hint">Satır başına bir tane: <code>Kaynak dildeki ifade = Türkçe</code>. Karakter adlarını sabitlemek için kullanışlıdır.</p>
       <textarea id="glossary" rows="6" placeholder="Hunter = Avcı&#10;Gate = Kapı&#10;Sung Jin-Woo = Sung Jin-Woo"></textarea>
     </section>
 

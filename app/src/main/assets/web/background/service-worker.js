@@ -78,6 +78,7 @@ async function handle(msg, sender) {
         enabled: s.enabled,
         render,
         provider: s.provider,
+        sourceLanguage: s.sourceLanguage,
       };
     }
 
@@ -92,6 +93,7 @@ async function handle(msg, sender) {
         url: msg.url,
         pageUrl: sender.tab.url,
         pageTitle: typeof msg.pageTitle === 'string' ? msg.pageTitle : '',
+        sourceLanguage: msg.sourceLanguage,
         dataUrl: msg.dataUrl,
         force: Boolean(msg.force),
       });
@@ -107,8 +109,10 @@ async function handle(msg, sender) {
   if (!isExtensionPage(sender)) throw new AppError(ERR.NOT_ALLOWED);
 
   switch (msg?.type) {
-    case 'GET_CACHED_PAGES':
-      return { ok: true, pages: await cachedPages() };
+    case 'GET_CACHED_PAGES': {
+      const s = await getSettings();
+      return { ok: true, pages: await cachedPages(s.sourceLanguage), sourceLanguage: s.sourceLanguage };
+    }
 
     case 'GET_STATE': {
       const s = await getSettings();

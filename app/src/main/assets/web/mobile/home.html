@@ -42,7 +42,7 @@
       h1 { font-size: 20px; }
     }
   </style>
-  <script src="home.js" defer></script>
+  <script src="home.js" type="module"></script>
 </head>
 <body>
 <main>
@@ -57,7 +57,8 @@
         API anahtarını <a href="https://aistudio.google.com/apikey">Google AI Studio</a> üzerinden alabilirsin.</li>
       <li>Adres çubuğuna webtoon sitesini yaz. Site açılınca <b>⋮ → Bu siteyi çeviri listesine ekle</b> seçeneğine dokun.</li>
       <li>Bir bölüm aç. “Çevriliyor…” yazısının ardından Türkçe metinler görsellerin üzerinde görünür.
-        Yazıya dokunduğunda İngilizce orijinali birkaç saniye görünür. <b>TR</b> düğmesi çeviriyi gizler veya gösterir.</li>
+        Yazıya dokunduğunda kaynak dildeki orijinali birkaç saniye görünür. <b>TR</b> düğmesi çeviriyi gizler veya gösterir.
+        Ayarlardaki <b>Çeviri dili</b> alanından İngilizce, Korece veya Japonca → Türkçe seçebilirsin.</li>
       <li><b>⋮ → AFK modunu başlat</b> seçeneği, çeviriler tamamlandıkça sayfayı kaydırır ve uygun bir sonraki bölüm bağlantısını izler.
         Ekrandaki küçük pencere simgeli yuvarlak düğmeyle istediğin zaman küçük pencereye geçebilirsin. Büyüttükten sonra aynı düğmeyle tekrar küçültebilirsin.
         <b>TR</b> ve <b>küçültme</b> düğmelerini sürükleyerek yerlerini değiştirebilirsin; bıraktığında hafifçe kayıp dururlar ve son konumları hatırlanır.</li>
@@ -70,7 +71,8 @@
     </section>
     <section class="panel" aria-labelledby="cache-heading">
       <h2 id="cache-heading">Çevrilen sayfalar</h2>
-      <p class="muted">Önbellekte çevirisi bulunan bölümler. Sayfa ve görseller için internet gerekebilir.</p>
+      <p id="cache-language" class="muted"></p>
+      <p class="muted">Seçili dilde önbelleğe alınan bölümler. Sayfa ve görseller için internet gerekebilir.</p>
       <p id="cache-status" class="muted" role="status">Önbellek okunuyor…</p>
       <ul id="cached-pages"></ul>
       <button id="retry" hidden>Tekrar dene</button>

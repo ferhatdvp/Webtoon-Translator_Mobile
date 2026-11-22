@@ -36,8 +36,8 @@ export function parseOllamaResponse(json, { coordMode, width, height }) {
   return { items };
 }
 
-export async function callOllama({ base64, width, height, endpoint, model, coordMode, glossary }) {
-  const prompt = buildPrompt({ provider: 'ollama', glossary, coordMode, width, height });
+export async function callOllama({ base64, width, height, endpoint, model, coordMode, glossary, sourceLanguage }) {
+  const prompt = buildPrompt({ provider: 'ollama', glossary, sourceLanguage, coordMode, width, height });
   let res;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 300_000);

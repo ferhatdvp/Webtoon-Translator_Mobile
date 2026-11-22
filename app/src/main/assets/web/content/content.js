@@ -472,7 +472,9 @@
     }
     const force = rec.force;
     rec.force = false;
-    const r = await send({ type: 'TRANSLATE_IMAGE', url: urlAtStart, dataUrl, force });
+    const r = await send({
+      type: 'TRANSLATE_IMAGE', url: urlAtStart, dataUrl, force, sourceLanguage: S.config.sourceLanguage,
+    });
     if (S.dead) return;
 
     if (rec.url !== urlAtStart || !S.recs.has(rec.img)) return; // bu arada görsel değişti/silindi
@@ -890,7 +892,12 @@
         break;
       case 'CONFIG_CHANGED':
         send({ type: 'GET_PAGE_CONFIG' }).then((r) => {
-          if (r?.ok) S.config = r;
+          if (!r?.ok) return;
+          if ((r.sourceLanguage || 'en') !== (S.config.sourceLanguage || 'en')) {
+            location.reload();
+            return;
+          }
+          S.config = r;
         });
         sendResponse({ ok: true });
         break;
@@ -1035,7 +1042,7 @@
       showTip(text, rect) {
         if (!text) return;
         const heading = document.createElement('small');
-        heading.textContent = 'ORİJİNAL (EN)';
+        heading.textContent = 'ORİJİNAL';
         tip.replaceChildren(heading);
         tip.appendChild(document.createTextNode(text));
         tip.style.display = 'block';

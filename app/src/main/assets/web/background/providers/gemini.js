@@ -41,8 +41,8 @@ export const _resetThinkingConfig = () => {
 
 export const GEMINI_TIMEOUT_MS = 90_000;
 
-export function buildGeminiRequest({ base64, mime, glossary }) {
-  const prompt = buildPrompt({ provider: 'gemini', glossary });
+export function buildGeminiRequest({ base64, mime, glossary, sourceLanguage }) {
+  const prompt = buildPrompt({ provider: 'gemini', glossary, sourceLanguage });
   const generationConfig = {
     temperature: 0.2,
     responseMimeType: 'application/json',
@@ -106,7 +106,7 @@ export function parseGeminiResponse(json) {
   return { items };
 }
 
-export async function callGemini({ base64, mime, apiKey, model, glossary }) {
+export async function callGemini({ base64, mime, apiKey, model, glossary, sourceLanguage }) {
   const url = `${GEMINI_BASE}/models/${encodeURIComponent(model)}:generateContent`;
   let res;
   let text;
@@ -116,7 +116,7 @@ export async function callGemini({ base64, mime, apiKey, model, glossary }) {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify(buildGeminiRequest({ base64, mime, glossary })),
+      body: JSON.stringify(buildGeminiRequest({ base64, mime, glossary, sourceLanguage })),
       signal: ctrl.signal,
     });
     text = await res.text();

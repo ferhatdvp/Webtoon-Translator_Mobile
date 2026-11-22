@@ -9,6 +9,7 @@
 
 import { AppError, ERR } from '../shared/errors.js';
 import { getSettings } from '../shared/settings.js';
+import { normalizeSourceLanguage } from '../shared/languages.js';
 import { dedupe, ownedByTile, planTiles, sortReadingOrder, tileToGlobal } from '../shared/geometry.js';
 import { cacheGet, cachePut, hashKey, rememberCachedPage, sha256Hex, tileKey, urlKey } from './cache.js';
 import { dataUrlToBuffer, fetchImageBuffer } from './net.js';
@@ -33,11 +34,13 @@ export function assertProviderReady(settings) {
 }
 
 /** Aynı görsel için eşzamanlı istekleri tek işe indirger. */
-export function translateImage(req) {
-  const id = req.url;
+export async function translateImage(req) {
+  const current = await getSettings();
+  const settings = { ...current, sourceLanguage: normalizeSourceLanguage(req.sourceLanguage ?? current.sourceLanguage) };
+  const id = settings.sourceLanguage + ':' + req.url;
   let p = !req.force && inflight.get(id);
   if (!p) {
-    p = doTranslate(req).finally(() => {
+    p = doTranslate(req, settings).finally(() => {
       if (inflight.get(id) === p) inflight.delete(id);
     });
     inflight.set(id, p);
@@ -52,11 +55,10 @@ export function translateImage(req) {
   });
 }
 
-async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
-  const settings = await getSettings();
+async function doTranslate({ url, pageUrl, dataUrl, force = false }, settings) {
   assertProviderReady(settings);
 
-  const uKey = dataUrl ? null : await urlKey(url);
+  const uKey = dataUrl ? null : await urlKey(url, settings.sourceLanguage);
   if (!force && uKey) {
     const hit = await cacheGet(uKey);
     if (hit) return { boxes: hit.boxes, cached: true, cacheKey: uKey };
@@ -64,7 +66,7 @@ async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
 
   const { buf, mime } = dataUrl ? dataUrlToBuffer(dataUrl) : await fetchImageBuffer(url, pageUrl);
   const hash = await sha256Hex(buf);
-  const hKey = hashKey(hash);
+  const hKey = hashKey(hash, settings.sourceLanguage);
 
   if (!force) {
     const hit = await cacheGet(hKey);
@@ -94,7 +96,7 @@ async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
     let usedModel = settings.provider === 'gemini' ? settings.gemini.model : settings.ollama.model;
 
     for (const tile of tiles) {
-      const tKey = tileKey(hash, tile);
+      const tKey = tileKey(hash, tile, settings.sourceLanguage);
       let items = null;
       if (!force) items = (await cacheGet(tKey))?.items ?? null;
 
@@ -115,7 +117,7 @@ async function doTranslate({ url, pageUrl, dataUrl, force = false }) {
     }
 
     const boxes = sortReadingOrder(dedupe(collected));
-    const value = { boxes, meta: { provider: settings.provider, model: usedModel, at: Date.now() } };
+    const value = { boxes, meta: { provider: settings.provider, model: usedModel, sourceLanguage: settings.sourceLanguage, at: Date.now() } };
     if (warnings.size === 0) {
       await cachePut(hKey, value);
       if (uKey) await cachePut(uKey, value);
@@ -144,6 +146,7 @@ async function runProvider(img, settings) {
         model,
         coordMode,
         glossary: settings.glossary,
+        sourceLanguage: settings.sourceLanguage,
       }),
     );
     return { ...r, model };
@@ -188,7 +191,10 @@ async function geminiWithRetry(model, img, settings) {
         await reserve(model, settings.limits); // LOCAL_CAP burada fırlar
         reserved = true;
         try {
-          return await callGemini({ base64: img.base64, mime: img.mime, apiKey, model, glossary: settings.glossary });
+          return await callGemini({
+            base64: img.base64, mime: img.mime, apiKey, model, glossary: settings.glossary,
+            sourceLanguage: settings.sourceLanguage,
+          });
         } catch (err) {
           // Soğuma, kuyruktaki SONRAKİ istek başlamadan önce ayarlanmalı (yarış durumunu önler).
           if (err?.code === ERR.QUOTA_MINUTE) noteRateLimited(err.retryAfterMs ?? 30000);
