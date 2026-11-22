@@ -65,6 +65,8 @@ class FloatingButtonTest {
         // Yerel koordinatlar hareket eden düğmenin içinde sabit kalabilir.
         val event = MotionEvent.obtain(downTime, time, action, screenX, screenY, 0)
         event.offsetLocation(-button.x, -button.y)
+        assertEquals("Raw touch X must remain in screen coordinates", screenX, event.rawX, 0.1f)
+        assertEquals("Raw touch Y must remain in screen coordinates", screenY, event.rawY, 0.1f)
         button.onTouchEvent(event)
         event.recycle()
     }
@@ -83,13 +85,16 @@ class FloatingButtonTest {
     fun keepsMovingAfterReleaseThenSlowsAndSavesTheFinalPosition() {
         dragRight()
         val releasedX = button.x
+        val releasedWidth = container.width
+        val animatorField = FloatingButton::class.java.getDeclaredField("glide").apply { isAccessible = true }
+        val hadAnimator = animatorField.get(button) != null
         idle(120)
         val firstX = button.x
         idle(120)
         val secondX = button.x
         idle(100)
         val thirdX = button.x
-        assertTrue("Must visibly move after the finger lifts", firstX - releasedX >= dp(6))
+        assertTrue("Must visibly move after the finger lifts: released=$releasedX first=$firstX second=$secondX third=$thirdX width=$releasedWidth/${container.width} animator=$hadAnimator dp6=${dp(6)}", firstX - releasedX >= dp(6))
         assertTrue("Must still visibly move after 240 ms", thirdX - secondX >= dp(1))
         assertTrue("Movement must slow down", secondX - firstX > thirdX - secondX)
         idle(300)
