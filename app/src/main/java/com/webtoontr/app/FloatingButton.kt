@@ -13,10 +13,10 @@ import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
-import android.view.VelocityTracker
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
+import java.util.ArrayDeque
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
@@ -33,8 +33,7 @@ class FloatingButton(
 ) : Button(context) {
     private val positions = context.getSharedPreferences("floating_controls", Context.MODE_PRIVATE)
     private val diameter = dp(48)
-    private val configuration = ViewConfiguration.get(context)
-    private val touchSlop = configuration.scaledTouchSlop
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var fractionX = savedFraction("x")
     private var fractionY = savedFraction("y")
     private var gestureActive = false
@@ -43,8 +42,8 @@ class FloatingButton(
     private var downY = 0f
     private var startX = 0f
     private var startY = 0f
-    private var velocity: VelocityTracker? = null
-    private var pointerId = 0
+    private data class MotionSample(val time: Long, val x: Float, val y: Float)
+    private val motionSamples = ArrayDeque<MotionSample>()
     private var glide: ValueAnimator? = null
 
     init {
@@ -132,26 +131,37 @@ class FloatingButton(
         cancelGesture()
     }
 
-    private fun recordVelocity(event: MotionEvent) {
-        val sample = MotionEvent.obtain(event)
-        // Düğme parmağı izlediğinden yerel koordinatlar değişmeyebilir; ekran koordinatlarını ölç.
-        sample.setLocation(event.rawX, event.rawY)
-        velocity?.addMovement(sample)
-        sample.recycle()
+    private fun recordMotion(event: MotionEvent) {
+        // Hareket eden View'ın yerel koordinatlarından bağımsız, son 100 ms'yi ölç.
+        motionSamples.addLast(MotionSample(event.eventTime, event.rawX, event.rawY))
+        while (motionSamples.size > 2 && motionSamples.first.time < event.eventTime - 100) {
+            motionSamples.removeFirst()
+        }
+    }
+
+    private fun releaseVelocity(): Pair<Float, Float> {
+        val last = motionSamples.lastOrNull() ?: return 0f to 0f
+        val first = motionSamples.firstOrNull {
+            val dx = last.x - it.x
+            val dy = last.y - it.y
+            dx * dx + dy * dy >= 1f
+        } ?: return 0f to 0f
+        val seconds = (last.time - first.time).coerceAtLeast(1) / 1000f
+        return (last.x - first.x) / seconds to (last.y - first.y) / seconds
     }
 
     private fun startGlide(vx: Float, vy: Float) {
         val speed = sqrt(vx * vx + vy * vy)
-        if (speed < configuration.scaledMinimumFlingVelocity) return
-        val travelTime = minOf(0.08f, dp(36) / speed)
+        if (speed == 0f) return
+        val distance = (speed * 0.12f).coerceIn(dp(24).toFloat(), dp(56).toFloat())
         val fromX = x
         val fromY = y
-        val toX = (fromX + vx * travelTime).coerceIn(0f, maxX())
-        val toY = (fromY + vy * travelTime).coerceIn(0f, maxY())
+        val toX = (fromX + vx / speed * distance).coerceIn(0f, maxX())
+        val toY = (fromY + vy / speed * distance).coerceIn(0f, maxY())
         if (toX == fromX && toY == fromY) return
         val animation = ValueAnimator.ofFloat(0f, 1f)
-        animation.duration = 220L
-        animation.interpolator = DecelerateInterpolator(1.5f)
+        animation.duration = 420L
+        animation.interpolator = DecelerateInterpolator()
         animation.addUpdateListener {
             val progress = it.animatedValue as Float
             x = fromX + (toX - fromX) * progress
@@ -173,8 +183,7 @@ class FloatingButton(
         gestureActive = false
         dragging = false
         isPressed = false
-        velocity?.recycle()
-        velocity = null
+        motionSamples.clear()
         parent?.requestDisallowInterceptTouchEvent(false)
     }
 
@@ -200,23 +209,19 @@ class FloatingButton(
                 downY = event.rawY
                 startX = x
                 startY = y
-                pointerId = event.getPointerId(0)
-                velocity = VelocityTracker.obtain()
-                recordVelocity(event)
+                recordMotion(event)
                 isPressed = true
                 parent?.requestDisallowInterceptTouchEvent(true)
             }
             MotionEvent.ACTION_MOVE -> if (gestureActive) {
-                recordVelocity(event)
+                recordMotion(event)
                 move(event)
             }
             MotionEvent.ACTION_UP -> if (gestureActive) {
-                recordVelocity(event)
+                recordMotion(event)
                 move(event)
                 val shouldClick = !dragging
-                velocity?.computeCurrentVelocity(1000, configuration.scaledMaximumFlingVelocity.toFloat())
-                val vx = velocity?.getXVelocity(pointerId) ?: 0f
-                val vy = velocity?.getYVelocity(pointerId) ?: 0f
+                val (vx, vy) = releaseVelocity()
                 if (dragging) savePosition()
                 cancelGesture()
                 if (shouldClick) performClick()
