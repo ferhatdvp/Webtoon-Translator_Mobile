@@ -40,5 +40,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("io.github.mlm-games:adblock:0.1.3")
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("org.robolectric:robolectric:4.17") {
+        exclude(group = "org.robolectric", module = "nativeruntime-dist-compat")
+    }
 }
