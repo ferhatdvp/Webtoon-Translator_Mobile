@@ -61,7 +61,15 @@ class FloatingButtonTest {
     }
 
     private fun dp(value: Int) = (value * button.resources.displayMetrics.density).toInt()
-    private fun idle(milliseconds: Long) = shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(milliseconds))
+    private fun idle(milliseconds: Long) {
+        // Tek zaman sıçraması ilk kareyi sona taşıyabilir; ekranı yaklaşık 60 FPS ilerlet.
+        var remaining = milliseconds
+        while (remaining > 0) {
+            val step = minOf(16L, remaining)
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(step))
+            remaining -= step
+        }
+    }
 
     private fun touch(action: Int, screenX: Float, screenY: Float) {
         val time = SystemClock.uptimeMillis()
@@ -89,16 +97,13 @@ class FloatingButtonTest {
     fun keepsMovingAfterReleaseThenSlowsAndSavesTheFinalPosition() {
         dragRight()
         val releasedX = button.x
-        val releasedWidth = container.width
-        val animatorField = FloatingButton::class.java.getDeclaredField("glide").apply { isAccessible = true }
-        val hadAnimator = animatorField.get(button) != null
         idle(120)
         val firstX = button.x
         idle(120)
         val secondX = button.x
         idle(100)
         val thirdX = button.x
-        assertTrue("Must visibly move after the finger lifts: released=$releasedX first=$firstX second=$secondX third=$thirdX width=$releasedWidth/${container.width} animator=$hadAnimator dp6=${dp(6)}", firstX - releasedX >= dp(6))
+        assertTrue("Must visibly move after the finger lifts: released=$releasedX first=$firstX", firstX - releasedX >= dp(6))
         assertTrue("Must still visibly move after 240 ms", thirdX - secondX >= dp(1))
         assertTrue("Movement must slow down", secondX - firstX > thirdX - secondX)
         idle(300)
