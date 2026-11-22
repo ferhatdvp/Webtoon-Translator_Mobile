@@ -22,6 +22,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import org.robolectric.annotation.LooperMode
 import org.robolectric.annotation.SQLiteMode
+import org.robolectric.shadows.ShadowChoreographer
 import java.time.Duration
 
 @RunWith(RobolectricTestRunner::class)
@@ -38,6 +39,9 @@ class FloatingButtonTest {
 
     @Before
     fun createButton() {
+        // Parmak hareketleri ve animasyon kareleri aynı denetlenen saati kullanmalı.
+        ShadowChoreographer.setPaused(true)
+        ShadowChoreographer.setFrameDelay(Duration.ofMillis(16))
         controller = Robolectric.buildActivity(Activity::class.java).setup()
         val activity = controller.get()
         activity.getSharedPreferences("floating_controls", Context.MODE_PRIVATE).edit().clear().commit()
