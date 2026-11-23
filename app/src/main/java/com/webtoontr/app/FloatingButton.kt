@@ -13,9 +13,10 @@ import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
-import android.view.animation.DecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.OverScroller
 import java.util.ArrayDeque
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
@@ -33,7 +34,8 @@ class FloatingButton(
 ) : Button(context) {
     private val positions = context.getSharedPreferences("floating_controls", Context.MODE_PRIVATE)
     private val diameter = dp(48)
-    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val configuration = ViewConfiguration.get(context)
+    private val touchSlop = configuration.scaledTouchSlop
     private var fractionX = savedFraction("x")
     private var fractionY = savedFraction("y")
     private var gestureActive = false
@@ -45,6 +47,9 @@ class FloatingButton(
     private data class MotionSample(val time: Long, val x: Float, val y: Float)
     private val motionSamples = ArrayDeque<MotionSample>()
     private var glide: ValueAnimator? = null
+    private val scroller = OverScroller(context).apply {
+        setFriction(ViewConfiguration.getScrollFriction() * 0.65f)
+    }
 
     init {
         text = label
@@ -120,6 +125,7 @@ class FloatingButton(
             it.cancel()
         }
         glide = null
+        scroller.forceFinished(true)
     }
 
     /** Yeni dokunmada, PiP'e geçişte veya ekran kapanırken hareketi bulunduğu yerde sonlandırır. */
@@ -152,26 +158,29 @@ class FloatingButton(
 
     private fun startGlide(vx: Float, vy: Float) {
         val speed = sqrt(vx * vx + vy * vy)
-        if (speed == 0f) return
-        val distance = (speed * 0.12f).coerceIn(dp(24).toFloat(), dp(56).toFloat())
-        val fromX = x
-        val fromY = y
-        val toX = (fromX + vx / speed * distance).coerceIn(0f, maxX())
-        val toY = (fromY + vy / speed * distance).coerceIn(0f, maxY())
-        if (toX == fromX && toY == fromY) return
+        if (speed < configuration.scaledMinimumFlingVelocity) return
+        val maxVelocity = configuration.scaledMaximumFlingVelocity.toFloat()
+        scroller.fling(
+            x.roundToInt(), y.roundToInt(),
+            vx.coerceIn(-maxVelocity, maxVelocity).roundToInt(),
+            vy.coerceIn(-maxVelocity, maxVelocity).roundToInt(),
+            0, maxX().toInt(), 0, maxY().toInt(),
+        )
+        if (scroller.finalX == scroller.startX && scroller.finalY == scroller.startY) return
         val animation = ValueAnimator.ofFloat(0f, 1f)
-        animation.duration = 420L
-        animation.interpolator = DecelerateInterpolator()
+        animation.duration = scroller.duration.toLong().coerceAtLeast(1L)
+        animation.interpolator = LinearInterpolator()
         animation.addUpdateListener {
-            val progress = it.animatedValue as Float
-            x = fromX + (toX - fromX) * progress
-            y = fromY + (toY - fromY) * progress
+            scroller.computeScrollOffset()
+            x = scroller.currX.toFloat().coerceIn(0f, maxX())
+            y = scroller.currY.toFloat().coerceIn(0f, maxY())
             fractionX = if (maxX() > 0) x / maxX() else 0f
             fractionY = if (maxY() > 0) y / maxY() else 0f
         }
         animation.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
                 glide = null
+                scroller.forceFinished(true)
                 savePosition()
             }
         })

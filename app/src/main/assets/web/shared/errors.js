@@ -11,6 +11,7 @@ export const ERR = {
   QUOTA_DAILY: 'QUOTA_DAILY',
   LOCAL_CAP: 'LOCAL_CAP',
   SERVER: 'SERVER',
+  SERVICE_BUSY: 'SERVICE_BUSY',
   NETWORK: 'NETWORK',
   OLLAMA_DOWN: 'OLLAMA_DOWN',
   OLLAMA_ORIGIN: 'OLLAMA_ORIGIN',
@@ -37,6 +38,7 @@ const FATAL = new Set([
   ERR.OLLAMA_MODEL,
   ERR.NOT_ALLOWED,
   ERR.MOBILE_HOLD,
+  ERR.SERVICE_BUSY,
 ]);
 
 // Kısa süre sonra otomatik yeniden denenebilecek hatalar.
@@ -53,6 +55,7 @@ export const DEFAULT_MESSAGES = {
     'Günlük ücretsiz kota doldu. Ücretli kullanıma otomatik geçilmedi. Kota Pasifik saatiyle gece yarısı (TR ≈ 10:00) sıfırlanır; ya da Ollama’ya geçebilirsiniz.',
   LOCAL_CAP: 'Kendi koyduğunuz günlük istek sınırına ulaşıldı.',
   SERVER: 'Çeviri servisi geçici olarak yanıt vermiyor.',
+  SERVICE_BUSY: 'Gemini şu anda yoğun. Çeviri beklemeye alındı; kısa süre sonra otomatik yeniden denenecek.',
   NETWORK: 'Bağlantı kesildi ya da servise ulaşılamıyor.',
   OLLAMA_DOWN: 'Ollama’ya ulaşılamıyor. Ollama’nın çalıştığından emin olun.',
   OLLAMA_ORIGIN:

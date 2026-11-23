@@ -49,7 +49,7 @@ class FloatingButtonTest {
         activity.setContentView(container)
         button = FloatingButton(activity, container, "test", "TR", "Çeviri", Color.BLUE, 0) { clicks++ }
         idle(20)
-        container.layout(0, 0, 600, 900)
+        container.layout(0, 0, 1200, 1600)
         button.layout(0, 0, dp(48), dp(48))
         button.x = 150f
         button.y = 200f
@@ -83,11 +83,11 @@ class FloatingButtonTest {
         event.recycle()
     }
 
-    private fun dragRight() {
+    private fun dragRight(stepMs: Long = 80) {
         touch(MotionEvent.ACTION_DOWN, 170f, 220f)
-        idle(80)
+        idle(stepMs)
         touch(MotionEvent.ACTION_MOVE, 190f, 220f)
-        idle(80)
+        idle(stepMs)
         touch(MotionEvent.ACTION_MOVE, 210f, 220f)
         idle(10)
         touch(MotionEvent.ACTION_UP, 210f, 220f)
@@ -97,24 +97,56 @@ class FloatingButtonTest {
     fun keepsMovingAfterReleaseThenSlowsAndSavesTheFinalPosition() {
         dragRight()
         val releasedX = button.x
-        idle(120)
+        idle(60)
         val firstX = button.x
-        idle(120)
+        idle(60)
         val secondX = button.x
-        idle(100)
+        idle(60)
         val thirdX = button.x
-        assertTrue("Must visibly move after the finger lifts: released=$releasedX first=$firstX", firstX - releasedX >= dp(6))
-        assertTrue("Must still visibly move after 240 ms", thirdX - secondX >= dp(1))
-        assertTrue("Movement must slow down", secondX - firstX > thirdX - secondX)
-        idle(300)
+        assertTrue("Must visibly move after the finger lifts: released=$releasedX first=$firstX", firstX - releasedX >= dp(2))
+        assertTrue("Movement must slow down", secondX - firstX >= thirdX - secondX)
+        idle(2500)
         val stoppedX = button.x
-        assertTrue("Glide should cover at least 24 dp", stoppedX - releasedX >= dp(24) - 1)
-        assertTrue("Glide should stay short", stoppedX - releasedX <= dp(56) + 1)
+        assertTrue("Light release should glide", stoppedX > releasedX)
         idle(500)
         assertEquals(stoppedX, button.x, 0.1f)
         assertEquals(0, clicks)
         val stored = controller.get().getSharedPreferences("floating_controls", Context.MODE_PRIVATE)
         assertEquals(stoppedX / (container.width - button.width), stored.getFloat("test-x", -1f), 0.001f)
+    }
+
+    @Test
+    fun fasterReleaseTravelsFurtherAndKeepsMovingLonger() {
+        dragRight(80)
+        val lightStart = button.x
+        idle(3000)
+        val lightDistance = button.x - lightStart
+        button.x = 150f
+        button.y = 200f
+        dragRight(8)
+        val fastStart = button.x
+        idle(280)
+        val fastAt280 = button.x
+        idle(100)
+        assertTrue("Hard throw must still move after a light throw would stop", button.x > fastAt280)
+        idle(3000)
+        assertTrue("Hard throw must travel much further", button.x - fastStart > lightDistance * 2)
+        assertEquals(0, clicks)
+    }
+
+    @Test
+    fun slowReleaseDoesNotDriftEvenWithoutHolding() {
+        touch(MotionEvent.ACTION_DOWN, 170f, 220f)
+        for (step in 1..4) {
+            idle(80)
+            touch(MotionEvent.ACTION_MOVE, 170f + step * 3, 220f)
+        }
+        idle(10)
+        touch(MotionEvent.ACTION_UP, 182f, 220f)
+        val releasedX = button.x
+        idle(1000)
+        assertEquals(releasedX, button.x, 0.1f)
+        assertEquals(0, clicks)
     }
 
     @Test

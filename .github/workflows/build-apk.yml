@@ -26,7 +26,9 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - name: Build debug APK
-        run: gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace
+        run: |
+          node --test tests/gemini-availability.test.mjs
+          gradle testDebugUnitTest assembleDebug --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
           name: webtoon-cevirmen-debug-apk

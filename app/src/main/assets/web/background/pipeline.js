@@ -23,6 +23,8 @@ import { noteCooldown, noteRateLimited, noteSuccess, schedule } from './schedule
 const GEMINI_TILE_WIDTH = 1000;
 const OLLAMA_TILE_WIDTH = 896;
 const inflight = new Map();
+const unavailableUntil = new Map();
+const MODEL_COOLDOWN_MS = 30000;
 
 export function assertProviderReady(settings) {
   if (settings.provider === 'gemini') {
@@ -158,23 +160,39 @@ export async function runGemini(img, settings) {
   const { model, fallbackModel } = settings.gemini;
   const models = [...new Set([model, fallbackModel].filter(Boolean))];
   let lastErr = null;
+  let retryAt = Infinity;
 
   for (const m of models) {
+    const unavailable = unavailableUntil.get(m) || 0;
+    if (unavailable > Date.now()) {
+      retryAt = Math.min(retryAt, unavailable);
+      continue;
+    }
     if (await isBlocked(m)) {
       lastErr = new AppError(ERR.QUOTA_DAILY);
       continue;
     }
     try {
       const r = await geminiWithRetry(m, img, settings);
+      unavailableUntil.delete(m);
       return { ...r, model: m };
     } catch (e) {
-      // Yalnızca "bu modelin kotası bitti" durumlarında yedeğe geç; diğer hatalar doğrudan yükselir.
+      if (e instanceof AppError && (e.code === ERR.SERVER || e.code === ERR.SERVICE_BUSY)) {
+        const until = Date.now() + (e.retryAfterMs || MODEL_COOLDOWN_MS);
+        unavailableUntil.set(m, until);
+        retryAt = Math.min(retryAt, until);
+        continue;
+      }
+      // Kalıcı kota sınırında da yalnızca kullanıcının seçtiği yedek model denenir.
       if (e instanceof AppError && (e.code === ERR.QUOTA_DAILY || e.code === ERR.LOCAL_CAP)) {
         lastErr = e;
         continue;
       }
       throw e;
     }
+  }
+  if (Number.isFinite(retryAt)) {
+    throw new AppError(ERR.SERVICE_BUSY, undefined, { retryAfterMs: Math.max(5000, retryAt - Date.now()) });
   }
   throw lastErr || new AppError(ERR.QUOTA_DAILY);
 }
@@ -188,6 +206,8 @@ async function geminiWithRetry(model, img, settings) {
     try {
       // Sayaç, istek gerçekten gönderilmeden hemen önce (kuyruk sırası gelince) artar.
       const r = await schedule(settings.limits.minIntervalMs, async () => {
+        const wait = (unavailableUntil.get(model) || 0) - Date.now();
+        if (wait > 0) throw new AppError(ERR.SERVICE_BUSY, undefined, { retryAfterMs: wait });
         await reserve(model, settings.limits); // LOCAL_CAP burada fırlar
         reserved = true;
         try {
@@ -207,9 +227,12 @@ async function geminiWithRetry(model, img, settings) {
       return r;
     } catch (e) {
       if (!(e instanceof AppError)) throw e;
-      if (e.code !== ERR.LOCAL_CAP) {
+      if (e.code !== ERR.LOCAL_CAP && e.code !== ERR.SERVICE_BUSY) {
         logRequest({ model, ok: false, code: e.code, status: e.status, ms: Date.now() - t0, retryAfterMs: e.retryAfterMs, note: e.detail || e.message });
       }
+
+      // Aynı yoğun modeli art arda tüketmek yerine runGemini yedeğe geçsin veya bekletsin.
+      if (e.code === ERR.SERVER || e.code === ERR.SERVICE_BUSY) throw e;
 
       if (e.code === ERR.QUOTA_DAILY) {
         if (reserved) await release(model);
@@ -235,7 +258,7 @@ async function geminiWithRetry(model, img, settings) {
         continue;
       }
 
-      if ((e.code === ERR.SERVER || e.code === ERR.BAD_RESPONSE) && attempt < 2) {
+      if (e.code === ERR.BAD_RESPONSE && attempt < 2) {
         attempt++;
         noteCooldown(2000 * attempt * attempt); // kısa ortak bekleme
         continue;

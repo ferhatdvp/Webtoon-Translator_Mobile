@@ -496,7 +496,9 @@
       rec.state = 'queued';
       S.queue.unshift(rec);
       const autoMs =
-        e.code === 'QUOTA_MINUTE' ? Math.max(30000, e.retryAfterMs || 0) : e.code === 'MOBILE_HOLD' ? 15000 : 0;
+        e.code === 'QUOTA_MINUTE' ? Math.max(30000, e.retryAfterMs || 0) :
+        e.code === 'SERVICE_BUSY' ? Math.max(5000, e.retryAfterMs || 30000) :
+        e.code === 'MOBILE_HOLD' ? 15000 : 0;
       pause(e, { autoMs });
       return;
     }
@@ -542,7 +544,7 @@
     if (['NO_API_KEY', 'FREE_TIER_UNCONFIRMED', 'AUTH', 'MODEL_NOT_FOUND', 'QUOTA_DAILY', 'LOCAL_CAP', 'OLLAMA_DOWN', 'OLLAMA_ORIGIN', 'OLLAMA_MODEL'].includes(info.code)) {
       actions.push({ label: 'Ayarlar', onClick: () => send({ type: 'OPEN_OPTIONS' }) });
     }
-    S.ui.toast({ key: 'pause', kind: 'error', sticky: true, text: info.message || info.code, actions });
+    S.ui.toast({ key: 'pause', kind: info.code === 'SERVICE_BUSY' ? 'info' : 'error', sticky: true, text: info.message || info.code, actions });
     updateStatus();
   }
 
@@ -616,7 +618,9 @@
   function syncBadge(rec) {
     let text = BADGE_TEXT[rec.state];
     if (!text || !rec.img.isConnected) return removeBadge(rec);
-    if (rec.state === 'queued' && S.paused) text = '⏸ Duraklatıldı';
+    if (rec.state === 'queued' && S.paused) {
+      text = S.pauseInfo?.code === 'SERVICE_BUSY' ? '⏳ Servis yoğun — bekleniyor' : '⏸ Duraklatıldı';
+    }
 
     const r = rec.img.getBoundingClientRect();
     const offscreen = r.width < 2 || r.bottom < 0 || r.top > window.innerHeight;
@@ -824,7 +828,8 @@
     let label = '';
     let tone = 'idle';
     if (S.paused) {
-      label = '⚠ Duraklatıldı — tıkla: devam';
+      label = S.pauseInfo?.code === 'SERVICE_BUSY'
+        ? '⏳ Servis yoğun — otomatik devam edilecek' : '⚠ Duraklatıldı — tıkla: devam';
       tone = 'warn';
     } else if (st.busy > 0) {
       label = S.active > 0 ? `Çevriliyor… ${st.done}/${st.total}` : `Sırada… ${st.busy}`;
