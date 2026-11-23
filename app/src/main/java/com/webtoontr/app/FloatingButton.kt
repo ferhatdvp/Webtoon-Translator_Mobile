@@ -1,8 +1,5 @@
 package com.webtoontr.app
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -13,7 +10,6 @@ import android.graphics.drawable.StateListDrawable
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.ViewConfiguration
-import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.OverScroller
@@ -46,7 +42,7 @@ class FloatingButton(
     private var startY = 0f
     private data class MotionSample(val time: Long, val x: Float, val y: Float)
     private val motionSamples = ArrayDeque<MotionSample>()
-    private var glide: ValueAnimator? = null
+    private var glide: Runnable? = null
     private val scroller = OverScroller(context).apply {
         setFriction(ViewConfiguration.getScrollFriction() * 0.65f)
     }
@@ -119,11 +115,7 @@ class FloatingButton(
     }
 
     private fun stopGlide() {
-        glide?.let {
-            it.removeAllListeners()
-            it.removeAllUpdateListeners()
-            it.cancel()
-        }
+        glide?.let { removeCallbacks(it) }
         glide = null
         scroller.forceFinished(true)
     }
@@ -167,25 +159,24 @@ class FloatingButton(
             0, maxX().toInt(), 0, maxY().toInt(),
         )
         if (scroller.finalX == scroller.startX && scroller.finalY == scroller.startY) return
-        val animation = ValueAnimator.ofFloat(0f, 1f)
-        animation.duration = scroller.duration.toLong().coerceAtLeast(1L)
-        animation.interpolator = LinearInterpolator()
-        animation.addUpdateListener {
-            scroller.computeScrollOffset()
-            x = scroller.currX.toFloat().coerceIn(0f, maxX())
-            y = scroller.currY.toFloat().coerceIn(0f, maxY())
-            fractionX = if (maxX() > 0) x / maxX() else 0f
-            fractionY = if (maxY() > 0) y / maxY() else 0f
-        }
-        animation.addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                glide = null
-                scroller.forceFinished(true)
-                savePosition()
+        val animation = object : Runnable {
+            override fun run() {
+                if (glide !== this) return
+                scroller.computeScrollOffset()
+                x = scroller.currX.toFloat().coerceIn(0f, maxX())
+                y = scroller.currY.toFloat().coerceIn(0f, maxY())
+                fractionX = if (maxX() > 0) x / maxX() else 0f
+                fractionY = if (maxY() > 0) y / maxY() else 0f
+                if (scroller.isFinished) {
+                    glide = null
+                    savePosition()
+                } else {
+                    postOnAnimation(this)
+                }
             }
-        })
+        }
         glide = animation
-        animation.start()
+        postOnAnimation(animation)
     }
 
     private fun cancelGesture() {
