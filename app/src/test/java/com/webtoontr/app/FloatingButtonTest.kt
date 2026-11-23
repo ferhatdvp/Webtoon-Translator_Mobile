@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -136,14 +137,19 @@ class FloatingButtonTest {
 
     @Test
     fun slowReleaseDoesNotDriftEvenWithoutHolding() {
+        val initialX = button.x
+        val dragX = 170f + ViewConfiguration.get(button.context).scaledTouchSlop + 10
         touch(MotionEvent.ACTION_DOWN, 170f, 220f)
+        idle(20)
+        touch(MotionEvent.ACTION_MOVE, dragX, 220f)
         for (step in 1..4) {
             idle(80)
-            touch(MotionEvent.ACTION_MOVE, 170f + step * 3, 220f)
+            touch(MotionEvent.ACTION_MOVE, dragX + step * 3, 220f)
         }
         idle(10)
-        touch(MotionEvent.ACTION_UP, 182f, 220f)
+        touch(MotionEvent.ACTION_UP, dragX + 12, 220f)
         val releasedX = button.x
+        assertTrue("Slow release must follow a real drag, not a tap", releasedX > initialX)
         idle(1000)
         assertEquals(releasedX, button.x, 0.1f)
         assertEquals(0, clicks)
